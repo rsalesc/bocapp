@@ -80,6 +80,11 @@ class RunsTableReorderer {
                 font-size: 14px;
                 cursor: pointer;
             }
+            /* Row Highlight */
+            table.boca-runs-table tr:not(:first-child):hover td {
+                box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.05);
+                cursor: pointer;
+            }
         `;
         document.head.appendChild(style);
     }

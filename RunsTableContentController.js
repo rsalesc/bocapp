@@ -14,6 +14,7 @@ class RunsTableContentController {
         this.loadState(); // This now calls updateRowVisibility to handle jury, problem, and team filtering
         this.setupProblemColumnInteractions();
         this.setupTeamColumnInteractions();
+        this.setupRowClickHandlers();
         this.applyAnswerColors();
         this.setupCodeViewerButtons();
     }
@@ -138,12 +139,22 @@ class RunsTableContentController {
 
             const problemName = cell.textContent.trim();
             
-            // Make clickable
-            cell.style.cursor = 'pointer';
-            cell.title = `Filter by Problem ${problemName}`;
+            // Clear previous click handlers on cell if any (though we are replacing content mostly)
+            cell.onclick = null;
+            cell.style.cursor = '';
+            cell.title = '';
+
+            // Create link
+            const link = document.createElement('a');
+            link.href = '#';
+            link.textContent = problemName;
+            link.title = `Filter by Problem ${problemName}`;
+            link.style.color = 'inherit';
+            link.style.textDecoration = 'underline';
             
-            // Store the problem name on the element to avoid closure issues if any, though let is block scoped
-            cell.onclick = () => {
+            link.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 // Toggle: if already filtered to this, unfilter.
                 if (this.problemFilter === problemName) {
                     this.setProblemFilter('');
@@ -151,6 +162,10 @@ class RunsTableContentController {
                     this.setProblemFilter(problemName);
                 }
             };
+
+            // Replace content
+            cell.innerHTML = '';
+            cell.appendChild(link);
         }
     }
 
@@ -166,11 +181,23 @@ class RunsTableContentController {
 
             const teamName = cell.textContent.trim();
             
-            // Make clickable
-            cell.style.cursor = 'pointer';
-            cell.title = `Filter by Team ${teamName}`;
+            // Clear previous click handlers on cell if any
+            cell.onclick = null;
+            cell.style.cursor = '';
+            cell.title = '';
+
+            // Create link
+            const link = document.createElement('a');
+            link.href = '#';
+            link.textContent = teamName;
+            link.title = `Filter by Team ${teamName}`;
+            // Use inherit color to match theme, but underline to show it is a link
+            link.style.color = 'inherit';
+            link.style.textDecoration = 'underline';
             
-            cell.onclick = () => {
+            link.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 // Toggle: if already filtered to this, unfilter.
                 if (this.teamFilter === teamName) {
                     this.setTeamFilter('');
@@ -178,6 +205,10 @@ class RunsTableContentController {
                     this.setTeamFilter(teamName);
                 }
             };
+
+            // Replace content
+            cell.innerHTML = '';
+            cell.appendChild(link);
         }
     }
 
@@ -329,16 +360,75 @@ class RunsTableContentController {
         return true;
     }
 
-    setupCodeViewerButtons() {
-        const plusPlusColIndex = this.getColumnIndex('++');
-        if (plusPlusColIndex === -1) return;
+    setupRowClickHandlers() {
+        const rows = Array.from(this.table.rows);
+        // Skip header
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            
+            // Add click handler
+            row.onclick = (e) => {
+                // Ignore if clicking on interactive elements
+                if (e.target.closest('a') || 
+                    e.target.closest('button') || 
+                    e.target.closest('input') || 
+                    e.target.closest('select') ||
+                    e.target.closest('.boca-view-btn') || 
+                    e.target.closest('.boca-hide-btn') ||
+                    e.target.closest('.boca-column-chip')) {
+                    return;
+                }
 
-        const runColIndex = this.getColumnIndex('Run #'); // Still needed for URL extraction
+                // Get Run Info
+                const { runPageUrl, runId } = this.extractRunInfo(row);
+                if (!runPageUrl) return;
+
+                // Get Metadata
+                const metadata = this.extractRowMetadata(row, runId);
+                
+                this.openCodeViewer(runPageUrl, metadata);
+            };
+        }
+    }
+
+    extractRunInfo(row) {
+        const runColIndex = this.getColumnIndex('Run #');
+        let runPageUrl = null;
+        let runId = '?';
+
+        if (runColIndex !== -1) {
+            const runCell = row.cells[runColIndex];
+            if (runCell) {
+                const runLink = runCell.querySelector('a');
+                if (runLink) {
+                    runPageUrl = runLink.href;
+                    runId = runCell.textContent.trim();
+                }
+            }
+        }
+        return { runPageUrl, runId };
+    }
+
+    extractRowMetadata(row, runId) {
         const timeColIndex = this.getColumnIndex('Time');
         const problemColIndex = this.getColumnIndex('Problem');
         const langColIndex = this.getColumnIndex('Language');
         const answerColIndex = this.getColumnIndex('Answer');
         const userColIndex = this.getUserColumnIndex();
+
+        return {
+            runId: runId,
+            time: timeColIndex !== -1 ? row.cells[timeColIndex].textContent.trim() : '?',
+            problem: problemColIndex !== -1 ? row.cells[problemColIndex].textContent.trim() : '?',
+            language: langColIndex !== -1 ? row.cells[langColIndex].textContent.trim() : '?',
+            answer: answerColIndex !== -1 ? row.cells[answerColIndex].textContent.trim() : '?',
+            team: userColIndex !== -1 ? row.cells[userColIndex].textContent.trim() : '?'
+        };
+    }
+
+    setupCodeViewerButtons() {
+        const plusPlusColIndex = this.getColumnIndex('++');
+        if (plusPlusColIndex === -1) return;
 
         const rows = Array.from(this.table.rows);
         // Skip header
@@ -350,21 +440,7 @@ class RunsTableContentController {
             // Check if we already injected
             if (cell.querySelector('.boca-view-btn')) continue;
 
-            // Need run link from Run column
-            let runPageUrl = null;
-            let runId = '?';
-
-            if (runColIndex !== -1) {
-                const runCell = row.cells[runColIndex];
-                if (runCell) {
-                    const runLink = runCell.querySelector('a');
-                    if (runLink) {
-                        runPageUrl = runLink.href;
-                        runId = runCell.textContent.trim();
-                    }
-                }
-            }
-
+            const { runPageUrl, runId } = this.extractRunInfo(row);
             if (!runPageUrl) continue;
 
             // Create view button
@@ -380,16 +456,7 @@ class RunsTableContentController {
                 e.preventDefault();
 
                 // Extract metadata on click to ensure it's up-to-date (e.g. time format)
-                const metadata = {
-                    runId: runId,
-                    // Use textContent for time to honor current format (HH:MM or min)
-                    time: timeColIndex !== -1 ? row.cells[timeColIndex].textContent.trim() : '?',
-                    problem: problemColIndex !== -1 ? row.cells[problemColIndex].textContent.trim() : '?',
-                    language: langColIndex !== -1 ? row.cells[langColIndex].textContent.trim() : '?',
-                    answer: answerColIndex !== -1 ? row.cells[answerColIndex].textContent.trim() : '?',
-                    team: userColIndex !== -1 ? row.cells[userColIndex].textContent.trim() : '?'
-                };
-
+                const metadata = this.extractRowMetadata(row, runId);
                 this.openCodeViewer(runPageUrl, metadata);
             };
 
@@ -437,7 +504,7 @@ class RunsTableContentController {
             let filename = 'source';
 
             for (const td of tds) {
-                if (td.textContent.trim().includes("Team's code") || td.textContent.trim().includes("Source code")) {
+                if (td.textContent.trim().toLowerCase().endsWith("code:")) {
                     const nextTd = td.nextElementSibling;
                     if (nextTd && nextTd.tagName === 'TD') {
                         const link = nextTd.querySelector('a[href*="filedownload.php"]');
@@ -458,7 +525,7 @@ class RunsTableContentController {
                 // Setup download button
                 downloadLinkBtn.onclick = () => window.open(downloadUrl, '_blank');
                 downloadLinkBtn.style.display = 'inline-block';
-                downloadLinkBtn.innerText = `Download ${filename}`;
+                downloadLinkBtn.innerText = `Download`;
 
                 // Fetch content
                 console.log("Fetching source from:", downloadUrl);

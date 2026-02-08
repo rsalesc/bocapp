@@ -41,6 +41,9 @@ async function init() {
     const table = findRunsTable();
     
     if (table) {
+        // Tag the table for Scoped Stylings
+        table.classList.add('boca-runs-table');
+
         // Initialize Content Controller first to inject ++ column if needed
         contentController = new RunsTableContentController(table);
         contentController.ensurePlusPlusColumn();
