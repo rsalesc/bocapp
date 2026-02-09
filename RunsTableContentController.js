@@ -523,7 +523,7 @@ class RunsTableContentController {
         this.showModal();
         this.updateModalTitle(metadata);
         
-        // Find existing pre and recreate code block to ensure clean state for highlight.js
+        // Reset state
         const pre = document.querySelector('#boca-code-modal pre');
         if (pre) {
             pre.innerHTML = '';
@@ -536,60 +536,42 @@ class RunsTableContentController {
             pre.appendChild(newCode);
         }
 
+        // Add Diff Button if not present
+        const actions = document.querySelector('#boca-code-modal .modal-actions');
+        if (actions && !document.getElementById('boca-modal-diff-btn')) {
+            const diffBtn = document.createElement('button');
+            diffBtn.id = 'boca-modal-diff-btn';
+            diffBtn.style.marginRight = '10px';
+            diffBtn.style.padding = '5px 10px';
+            diffBtn.style.cursor = 'pointer';
+            diffBtn.style.backgroundColor = '#d19a66'; // Orange-ish
+            diffBtn.style.border = 'none';
+            diffBtn.style.color = 'white';
+            diffBtn.style.borderRadius = '4px';
+            diffBtn.innerHTML = '⇄ Diff with Last';
+            diffBtn.onclick = () => this.handleDiffWithLast(metadata, runPageUrl);
+            
+            // Insert before download button
+            const downloadBtn = document.getElementById('boca-modal-download-btn');
+            actions.insertBefore(diffBtn, downloadBtn);
+        }
+
         const codeBlock = document.getElementById('boca-code-content');
         const statusEl = document.getElementById('boca-code-status');
         const downloadLinkBtn = document.getElementById('boca-modal-download-btn');
+        const diffBtn = document.getElementById('boca-modal-diff-btn');
         
         statusEl.textContent = 'Loading source code...';
         statusEl.style.display = 'block';
         downloadLinkBtn.style.display = 'none';
+        if (diffBtn) diffBtn.style.display = 'none'; // Hide until loaded
 
         try {
-            console.log("Fetching run page:", runPageUrl);
-            const response = await fetch(runPageUrl);
-            const text = await response.text();
-            
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'text/html');
+            this.currentRunSource = await this.fetchRunSource(runPageUrl);
+            const { code, filename, downloadUrl } = this.currentRunSource;
 
-            // Find valid download link
-            const tds = Array.from(doc.querySelectorAll('td'));
-            let downloadUrl = null;
-            let filename = 'source';
-
-            for (const td of tds) {
-                if (td.textContent.trim().toLowerCase().endsWith("code:")) {
-                    const nextTd = td.nextElementSibling;
-                    if (nextTd && nextTd.tagName === 'TD') {
-                        const link = nextTd.querySelector('a[href*="filedownload.php"]');
-                        if (link) {
-                            filename = link.textContent.trim();
-                            const relativeHref = link.getAttribute('href');
-                            if (relativeHref) {
-                                const base = new URL(runPageUrl);
-                                downloadUrl = new URL(relativeHref, base).href;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-
-            if (downloadUrl) {
-                // Setup download button
-                downloadLinkBtn.onclick = () => window.open(downloadUrl, '_blank');
-                downloadLinkBtn.style.display = 'inline-block';
-                downloadLinkBtn.innerText = `Download`;
-
-                // Fetch content
-                console.log("Fetching source from:", downloadUrl);
-                const sourceResponse = await fetch(downloadUrl);
-                const sourceText = await sourceResponse.text();
-
-                statusEl.style.display = 'none';
-                codeBlock.textContent = sourceText;
-                
-                // Determine language class for highlight.js
+            if (code) {
+                // Determine language
                 let langClass = '';
                 const langLower = metadata.language.toLowerCase();
                 const filenameLower = filename.toLowerCase();
@@ -600,19 +582,203 @@ class RunsTableContentController {
                 else if (langLower.includes('c') || filenameLower.endsWith('.c')) langClass = 'language-c';
                 else if (langLower.includes('kotlin') || filenameLower.endsWith('.kt')) langClass = 'language-kotlin';
                 
+                statusEl.style.display = 'none';
+                codeBlock.textContent = code;
                 if (langClass) codeBlock.classList.add(langClass);
+                if (window.hljs) window.hljs.highlightElement(codeBlock);
 
-                // Highlight
-                if (window.hljs) {
-                    window.hljs.highlightElement(codeBlock);
+                if (downloadUrl) {
+                    downloadLinkBtn.onclick = () => window.open(downloadUrl, '_blank');
+                    downloadLinkBtn.style.display = 'inline-block';
+                    downloadLinkBtn.innerText = `Download`;
                 }
+
+                if (diffBtn) diffBtn.style.display = 'inline-block';
             } else {
-                statusEl.textContent = "Could not find source code link.";
+                statusEl.textContent = "Could not find source code.";
             }
 
         } catch (e) {
             console.error("Error loading code:", e);
             statusEl.textContent = "Error loading source code.";
+        }
+    }
+
+    async fetchRunSource(runPageUrl) {
+        console.log("Fetching run page:", runPageUrl);
+        const response = await fetch(runPageUrl);
+        const text = await response.text();
+        
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, 'text/html');
+
+        const tds = Array.from(doc.querySelectorAll('td'));
+        let downloadUrl = null;
+        let filename = 'source';
+
+        for (const td of tds) {
+            if (td.textContent.trim().toLowerCase().endsWith("code:")) {
+                const nextTd = td.nextElementSibling;
+                if (nextTd && nextTd.tagName === 'TD') {
+                    const link = nextTd.querySelector('a[href*="filedownload.php"]');
+                    if (link) {
+                        filename = link.textContent.trim();
+                        const relativeHref = link.getAttribute('href');
+                        if (relativeHref) {
+                            const base = new URL(runPageUrl);
+                            downloadUrl = new URL(relativeHref, base).href;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        if (downloadUrl) {
+            console.log("Fetching source from:", downloadUrl);
+            const sourceResponse = await fetch(downloadUrl);
+            const sourceText = await sourceResponse.text();
+            return { code: sourceText, filename, downloadUrl };
+        }
+        return { code: null, filename: null, downloadUrl: null };
+    }
+
+    async handleDiffWithLast(metadata, currentRunPageUrl) {
+        const statusEl = document.getElementById('boca-code-status');
+        const codeBlock = document.getElementById('boca-code-content');
+        
+        statusEl.textContent = 'Finding last run...';
+        statusEl.style.display = 'block';
+        codeBlock.innerHTML = ''; // Clear current code
+
+        const lastRun = this.findLastRun(metadata.runId, metadata.problem, metadata.team);
+
+        if (!lastRun) {
+            statusEl.textContent = 'No previous run found for comparison.';
+            return;
+        }
+
+        const lastRunMetadata = this.extractRowMetadata(lastRun.row, lastRun.runId);
+
+        statusEl.textContent = `Fetching run ${lastRun.runId}...`;
+        
+        try {
+            const { runPageUrl } = this.extractRunInfo(lastRun.row);
+             // Ensure current source logic
+            if (!this.currentRunSource) {
+                 this.currentRunSource = await this.fetchRunSource(currentRunPageUrl);
+            }
+
+            const lastRunSource = await this.fetchRunSource(runPageUrl);
+
+            if (this.currentRunSource.code && lastRunSource.code) {
+                statusEl.style.display = 'none';
+                this.renderDiff(lastRunSource.code, this.currentRunSource.code, lastRunMetadata, metadata);
+            } else {
+                 statusEl.textContent = 'Failed to fetch source codes for diff.';
+            }
+
+        } catch (e) {
+            console.error("Error in handleDiffWithLast:", e);
+            statusEl.textContent = 'Error computing diff.';
+        }
+    }
+
+    findLastRun(currentRunIdStr, problem, team) {
+        // ... (findLastRun implementation unchanged, but needed for context if this wasn't replace_file_content. 
+        // Since it is, I can skip including unchanged methods in replacement if I target correctly, 
+        // but here I need to replace handleDiffWithLast which calls renderDiff)
+        // CHECK: I can just replace handleDiffWithLast and renderDiff separately or together if contiguous.
+        // They are separated by findLastRun. I will replace handleDiffWithLast first.
+        
+        const currentRunId = parseInt(currentRunIdStr, 10);
+        let maxRunId = -1;
+        let foundRow = null;
+
+        const rows = Array.from(this.table.rows);
+        // Skip header
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const meta = this.extractRowMetadata(row, '?');
+            const { runId: rIdStr } = this.extractRunInfo(row);
+            const rId = parseInt(rIdStr, 10);
+
+            if (isNaN(rId)) continue;
+            if (rId >= currentRunId) continue;
+
+            if (meta.problem !== problem) continue;
+            if (meta.team !== team) continue;
+            
+            if (meta.answer.toUpperCase().includes('YES') || meta.answer.toUpperCase().includes('ACCEPTED')) continue;
+
+            if (rId > maxRunId) {
+                maxRunId = rId;
+                foundRow = row;
+            }
+        }
+        return foundRow ? { row: foundRow, runId: maxRunId } : null;
+    }
+
+    renderDiff(oldText, newText, oldMetadata, newMetadata) {
+        try {
+            if (typeof diff_match_patch === 'undefined') {
+                throw new Error("diff_match_patch library not loaded");
+            }
+
+            const dmp = new diff_match_patch();
+            const a = dmp.diff_linesToChars_(oldText, newText);
+            const lineText1 = a.chars1;
+            const lineText2 = a.chars2;
+            const lineArray = a.lineArray;
+            
+            const diffs = dmp.diff_main(lineText1, lineText2, false);
+            dmp.diff_charsToLines_(diffs, lineArray);
+            dmp.diff_cleanupSemantic(diffs);
+
+            const container = document.getElementById('boca-code-content');
+            container.innerHTML = '';
+            container.classList = ''; // Remove language class
+
+            const diffContainer = document.createElement('div');
+            diffContainer.style.fontFamily = 'Consolas, monospace';
+            diffContainer.style.whiteSpace = 'pre-wrap';
+
+            const header = document.createElement('div');
+            header.style.marginBottom = '10px';
+            header.style.paddingBottom = '10px';
+            header.style.borderBottom = '1px solid #555';
+            header.style.fontSize = '14px';
+            
+            const oldInfo = `Run ${oldMetadata.runId} (${oldMetadata.answer}, ${oldMetadata.time} - ${oldMetadata.language})`;
+            const newInfo = `Run ${newMetadata.runId} (Current)`;
+
+            header.innerHTML = `Comparing: <strong>${oldInfo}</strong> <br/> vs <br/> <strong>${newInfo}</strong>`;
+            diffContainer.appendChild(header);
+
+            diffs.forEach(diff => {
+                const type = diff[0];
+                const text = diff[1];
+                
+                const span = document.createElement('span');
+                span.textContent = text;
+                
+                if (type === 1) { // Insert (DIFF_INSERT)
+                    span.style.backgroundColor = 'rgba(40, 167, 69, 0.2)';
+                    span.style.color = '#a6e22e';
+                } else if (type === -1) { // Delete (DIFF_DELETE)
+                    span.style.backgroundColor = 'rgba(220, 53, 69, 0.2)';
+                    span.style.color = '#f92672';
+                    span.style.textDecoration = 'line-through'; 
+                }
+                diffContainer.appendChild(span);
+            });
+            
+            container.appendChild(diffContainer);
+
+        } catch (e) {
+            console.error("Error in renderDiff:", e);
+            const container = document.getElementById('boca-code-content');
+            container.textContent = "Error rendering diff: " + e.message;
         }
     }
 
@@ -660,6 +826,7 @@ class RunsTableContentController {
         title.style.color = '#e06c75'; // Reddish for emphasis
 
         const actions = document.createElement('div');
+        actions.className = 'modal-actions';
         
         const rbxModalBtn = document.createElement('button');
         rbxModalBtn.id = 'boca-modal-rbx-btn';

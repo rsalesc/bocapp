@@ -35,6 +35,7 @@
         "libs/tom-select.js",
         "libs/highlight.min.js",
         "libs/toastify.js",
+        "libs/diff_match_patch.js",
         "utils.js",
         "RunsTableReorderer.js",
         "RunsTableContentController.js",
