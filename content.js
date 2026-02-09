@@ -284,6 +284,19 @@ function injectControls() {
         juryLabel.appendChild(document.createTextNode('Hide jury runs'));
         controlsRow.appendChild(juryLabel);
 
+        // Checkbox: Hide Deleted Runs
+        const deletedLabel = document.createElement('label');
+        deletedLabel.className = 'boca-checkbox-label';
+        
+        const deletedCheckbox = document.createElement('input');
+        deletedCheckbox.type = 'checkbox';
+        deletedCheckbox.checked = contentController.deletedHidden;
+        deletedCheckbox.onchange = (e) => contentController.toggleDeleted(e.target.checked);
+        
+        deletedLabel.appendChild(deletedCheckbox);
+        deletedLabel.appendChild(document.createTextNode('Hide deleted runs'));
+        controlsRow.appendChild(deletedLabel);
+
         // Checkbox: HH:MM Format
         const timeLabel = document.createElement('label');
         timeLabel.className = 'boca-checkbox-label';

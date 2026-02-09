@@ -3,11 +3,20 @@ class RunsTableContentController {
         this.table = table;
         this.storageKeyTimeFormat = 'boca_plusplus_time_format';
         this.juryHidden = false;
+        this.deletedHidden = false;
         this.timeFormatHHMM = false;
         this.problemFilter = '';
         this.teamFilter = '';
         this.onProblemFilterChange = null;
         this.onTeamFilterChange = null;
+        
+        // New Run Highlighting State
+        this.storageKeyMaxJudged = 'boca_plusplus_max_judged_run';
+        this.storageKeyMaxNonJudged = 'boca_plusplus_max_non_judged_run';
+        this.storedMaxJudged = 0;
+        this.storedMaxNonJudged = 0;
+        this.currentMaxJudged = 0;
+        this.currentMaxNonJudged = 0;
     }
 
     init() {
@@ -17,12 +26,17 @@ class RunsTableContentController {
         this.setupRowClickHandlers();
         this.applyAnswerColors();
         this.setupCodeViewerButtons();
+        this.setupRunHighlighting();
     }
 
     loadState() {
         // Load Jury Hidden State from URL
         const hideJuryParam = getUrlState('bppHideJury');
         this.juryHidden = hideJuryParam === 'true';
+
+        // Load Deleted Hidden State from URL
+        const hideDeletedParam = getUrlState('bppHideDeleted');
+        this.deletedHidden = hideDeletedParam === 'true';
 
         // Load Problem Filter State from URL
         const problemParam = getUrlState('problem');
@@ -104,6 +118,12 @@ class RunsTableContentController {
     toggleJury(shouldHide) {
         this.juryHidden = shouldHide;
         updateUrlState('bppHideJury', shouldHide ? 'true' : null);
+        this.updateRowVisibility();
+    }
+
+    toggleDeleted(shouldHide) {
+        this.deletedHidden = shouldHide;
+        updateUrlState('bppHideDeleted', shouldHide ? 'true' : null);
         this.updateRowVisibility();
     }
 
@@ -251,6 +271,20 @@ class RunsTableContentController {
                     const teamText = cell.textContent.trim();
                     if (teamText !== this.teamFilter) {
                         isVisible = false;
+                    }
+                }
+            }
+
+            // 4. Deleted Filter
+            if (isVisible && this.deletedHidden) {
+                const answerColIndex = this.getColumnIndex('Status');
+                if (answerColIndex !== -1) {
+                    const cell = row.cells[answerColIndex];
+                    if (cell) {
+                        const answerText = cell.textContent.toLowerCase();
+                        if (answerText.includes('deleted')) {
+                            isVisible = false;
+                        }
                     }
                 }
             }
@@ -800,4 +834,113 @@ class RunsTableContentController {
             }
         }
     }
-}
+
+    setupRunHighlighting() {
+        this.injectHighlightStyles();
+
+        // Load stored state
+        const storedJudged = localStorage.getItem(this.storageKeyMaxJudged);
+        const storedNonJudged = localStorage.getItem(this.storageKeyMaxNonJudged);
+
+        this.storedMaxJudged = storedJudged ? parseInt(storedJudged, 10) : 0;
+        this.storedMaxNonJudged = storedNonJudged ? parseInt(storedNonJudged, 10) : 0;
+
+        // Process rows to find max and highlight
+        this.highlightNewRuns();
+
+        // Setup update on focus
+        const updateState = () => {
+            // Only update if we have found newer runs
+            let updated = false;
+            
+            if (this.currentMaxJudged > this.storedMaxJudged) {
+                localStorage.setItem(this.storageKeyMaxJudged, this.currentMaxJudged);
+                // Update stored value to reflect that we've "seen" it now?
+                // The prompt says: "notice highlighted rows should be kept highlighted, the state refresh should only affect the highlighted rows on the next page refresh after the change."
+                // So we update LocalStorage, but we DO NOT update `this.storedMaxJudged` because that would stop highlighting if we re-ran highlightNewRuns (which we don't, but still).
+                updated = true;
+            }
+
+            if (this.currentMaxNonJudged > this.storedMaxNonJudged) {
+                localStorage.setItem(this.storageKeyMaxNonJudged, this.currentMaxNonJudged);
+                updated = true;
+            }
+
+            if (updated) {
+                console.log("Updated max run IDs in storage:", {
+                    judged: this.currentMaxJudged, 
+                    nonJudged: this.currentMaxNonJudged
+                });
+            }
+        };
+
+        if (document.hasFocus()) {
+            updateState();
+        }
+        window.addEventListener('focus', updateState);
+    }
+
+    highlightNewRuns() {
+        const runColIndex = this.getColumnIndex('Run #');
+        const userColIndex = this.getUserColumnIndex();
+
+        if (runColIndex === -1 || userColIndex === -1) return;
+
+        const rows = Array.from(this.table.rows);
+        
+        // Initialize current max with stored values, so we at least keep the baseline
+        this.currentMaxJudged = this.storedMaxJudged;
+        this.currentMaxNonJudged = this.storedMaxNonJudged;
+
+        // Skip header
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const runCell = row.cells[runColIndex];
+            const userCell = row.cells[userColIndex];
+
+            if (!runCell || !userCell) continue;
+
+            const runId = parseInt(runCell.innerText.trim(), 10);
+            if (isNaN(runId)) continue;
+
+            const userText = userCell.innerText.trim().toLowerCase();
+            const isJudge = userText.includes('judge');
+
+            if (isJudge) {
+                this.currentMaxJudged = Math.max(this.currentMaxJudged, runId);
+                // Highlight if newer than stored
+                if (runId > this.storedMaxJudged) {
+                    row.classList.add('boca-new-run');
+                    row.title = "New Run Since Last Visit";
+                }
+            } else {
+                this.currentMaxNonJudged = Math.max(this.currentMaxNonJudged, runId);
+                // Highlight if newer than stored
+                if (runId > this.storedMaxNonJudged) {
+                    row.classList.add('boca-new-run');
+                    row.title = "New Run Since Last Visit";
+                }
+            }
+        }
+    }
+
+    injectHighlightStyles() {
+        if (document.getElementById('boca-plusplus-highlight-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'boca-plusplus-highlight-styles';
+        style.textContent = `
+            .boca-new-run {
+                position: relative;
+                background-color: rgba(33, 150, 243, 0.15) !important; /* Light Blue tint */
+            }
+            .boca-new-run td:first-child {
+                box-shadow: inset 4px 0 0 0 #2196f3; /* Blue left border indicator */
+            }
+            .boca-new-run:hover {
+                background-color: rgba(33, 150, 243, 0.25) !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    }
+
