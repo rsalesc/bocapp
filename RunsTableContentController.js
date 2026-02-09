@@ -144,6 +144,22 @@ class RunsTableContentController {
         this.updateRowVisibility();
     }
 
+    toggleSelectAll(shouldSelect) {
+        const rows = Array.from(this.table.rows);
+        // Skip header
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const checkbox = row.querySelector('input[type="checkbox"]');
+            if (checkbox) {
+                // If row is visible AND shouldSelect is true => Check
+                // If row is hidden OR shouldSelect is false => Uncheck
+                // This satisfies "Select visible" and "Unselect all others"
+                const isVisible = row.style.display !== 'none';
+                checkbox.checked = isVisible && shouldSelect;
+            }
+        }
+    }
+
     toggleTimeFormat(showHHMM) {
         this.timeFormatHHMM = showHHMM;
         localStorage.setItem(this.storageKeyTimeFormat, showHHMM ? 'hhmm' : 'min');
@@ -1240,6 +1256,19 @@ class RunsTableContentController {
             };
         }
 
+        // Checkbox: Select All Visible
+        const selectAllLabel = document.createElement('label');
+        selectAllLabel.className = 'boca-checkbox-label';
+        
+        const selectAllCheckbox = document.createElement('input');
+        selectAllCheckbox.type = 'checkbox';
+        selectAllCheckbox.title = 'Selects all visible rows and unselects hidden ones';
+        selectAllCheckbox.onclick = (e) => this.toggleSelectAll(e.target.checked);
+        
+        selectAllLabel.appendChild(selectAllCheckbox);
+        selectAllLabel.appendChild(document.createTextNode('Select visible'));
+        container.appendChild(selectAllLabel);
+
         // Checkbox: Hide Jury Runs
         const juryLabel = document.createElement('label');
         juryLabel.className = 'boca-checkbox-label';
@@ -1494,6 +1523,14 @@ class RunsTableContentController {
             row.style.padding = '10px';
             row.style.borderBottom = '1px solid #eee';
             
+            // Enabled Checkbox
+            const enabledCheck = document.createElement('input');
+            enabledCheck.type = 'checkbox';
+            enabledCheck.checked = (item.enabled !== false); // Default true
+            enabledCheck.style.marginRight = '10px';
+            enabledCheck.title = 'Enable/Disable Highlighting';
+            enabledCheck.onchange = (e) => this.toggleNotificationEnabled(index, e.target.checked);
+
             // Editable Color Preview
             const colorContainer = document.createElement('div');
             colorContainer.style.position = 'relative';
@@ -1557,6 +1594,7 @@ class RunsTableContentController {
             delBtn.onclick = () => this.removeNotification(index);
 
             row.appendChild(colorContainer);
+            row.appendChild(enabledCheck);
             row.appendChild(colorContainer);
             row.appendChild(text);
             row.appendChild(aliasEdit);
@@ -1581,6 +1619,14 @@ class RunsTableContentController {
             this.saveNotifications();
             // No need to re-render list as input is already updated
             this.applyProblemHighlights(); 
+        }
+    }
+
+    toggleNotificationEnabled(index, isEnabled) {
+        if (this.notifications[index]) {
+            this.notifications[index].enabled = isEnabled;
+            this.saveNotifications();
+            this.applyProblemHighlights();
         }
     }
 
@@ -1610,7 +1656,7 @@ class RunsTableContentController {
 
         // Check if exists, update if so
         const existingIndex = this.notifications.findIndex(n => n.problem === problem);
-        const newObj = { problem, color, textColor, alias, fullname: '', basename: '' };
+        const newObj = { problem, color, textColor, alias, fullname: '', basename: '', enabled: true };
         
         if (existingIndex !== -1) {
             // Preserve other fields? 
@@ -1661,8 +1707,11 @@ class RunsTableContentController {
         // Create a map for faster lookup
         const problemMap = {};
         this.notifications.forEach(n => {
-            // We store normalized (trimmed, uppercase usually implied) problem letters
-            problemMap[n.problem] = n;
+            // Only add if enabled (default true if undefined)
+            if (n.enabled !== false) {
+                // We store normalized (trimmed, uppercase usually implied) problem letters
+                problemMap[n.problem] = n;
+            }
         });
 
         // Skip header
@@ -1811,7 +1860,8 @@ class RunsTableContentController {
                     textColor,
                     fullname, // Save original fullname
                     basename,
-                    alias: fullname || shortName // Default alias to fullname
+                    alias: fullname || shortName, // Default alias to fullname
+                    enabled: true
                 };
 
                 if (existingIndex !== -1) {
