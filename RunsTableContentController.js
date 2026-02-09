@@ -414,7 +414,9 @@ class RunsTableContentController {
         const problemColIndex = this.getColumnIndex('Problem');
         const langColIndex = this.getColumnIndex('Language');
         const answerColIndex = this.getColumnIndex('Answer');
+
         const userColIndex = this.getUserColumnIndex();
+        const siteColIndex = this.getColumnIndex('Site');
 
         return {
             runId: runId,
@@ -422,7 +424,8 @@ class RunsTableContentController {
             problem: problemColIndex !== -1 ? row.cells[problemColIndex].textContent.trim() : '?',
             language: langColIndex !== -1 ? row.cells[langColIndex].textContent.trim() : '?',
             answer: answerColIndex !== -1 ? row.cells[answerColIndex].textContent.trim() : '?',
-            team: userColIndex !== -1 ? row.cells[userColIndex].textContent.trim() : '?'
+            team: userColIndex !== -1 ? row.cells[userColIndex].textContent.trim() : '?',
+            site: siteColIndex !== -1 ? row.cells[siteColIndex].textContent.trim() : '1'
         };
     }
 
@@ -460,7 +463,24 @@ class RunsTableContentController {
                 this.openCodeViewer(runPageUrl, metadata);
             };
 
+            // RBX Run Button
+            const rbxBtn = document.createElement('span');
+            rbxBtn.className = 'boca-rbx-btn';
+            rbxBtn.innerHTML = '💻'; // Terminal icon
+            rbxBtn.title = 'Copy RBX Run Command';
+            rbxBtn.style.cursor = 'pointer';
+            rbxBtn.style.fontSize = '14px';
+            rbxBtn.style.marginLeft = '8px';
+
+            rbxBtn.onclick = (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const metadata = this.extractRowMetadata(row, runId);
+                this.copyRbxCommand(metadata);
+            };
+
             cell.appendChild(viewBtn);
+            cell.appendChild(rbxBtn);
         }
     }
 
@@ -607,6 +627,17 @@ class RunsTableContentController {
 
         const actions = document.createElement('div');
         
+        const rbxModalBtn = document.createElement('button');
+        rbxModalBtn.id = 'boca-modal-rbx-btn';
+        rbxModalBtn.style.marginRight = '10px';
+        rbxModalBtn.style.padding = '5px 10px';
+        rbxModalBtn.style.cursor = 'pointer';
+        rbxModalBtn.style.backgroundColor = '#98c379';
+        rbxModalBtn.style.border = 'none';
+        rbxModalBtn.style.color = 'white';
+        rbxModalBtn.style.borderRadius = '4px';
+        rbxModalBtn.innerHTML = '💻 Copy RBX';
+
         const downloadBtn = document.createElement('button');
         downloadBtn.id = 'boca-modal-download-btn';
         downloadBtn.style.marginRight = '15px';
@@ -624,6 +655,7 @@ class RunsTableContentController {
         closeBtn.style.lineHeight = '1';
         closeBtn.onclick = () => this.closeModal();
 
+        actions.appendChild(rbxModalBtn);
         actions.appendChild(downloadBtn);
         actions.appendChild(closeBtn);
         header.appendChild(title);
@@ -680,6 +712,73 @@ class RunsTableContentController {
         document.body.style.overflow = '';
     }
 
+    copyRbxCommand(metadata) {
+        // Extract problem letter
+        // Assuming format "A - Problem Name" or just "A"
+        let problemLetter = metadata.problem.split('-')[0].trim();
+        // If problem letter is empty or strange (e.g. maybe just the name), fallback to whole string but likely just the first char or word
+        if (!problemLetter) problemLetter = metadata.problem.charAt(0);
+
+        const command = `rbx on ${problemLetter} run @boca/${metadata.runId}-${metadata.site}`;
+
+        const fallbackCopy = () => {
+            const textArea = document.createElement("textarea");
+            textArea.value = command;
+            
+            // Ensure it's not visible but part of DOM
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    this.showToast(`Copied: ${command}`, 'success');
+                } else {
+                    this.showToast('Copy command failed', 'error');
+                }
+            } catch (err) {
+                this.showToast('Unable to copy', 'error');
+            }
+            
+            document.body.removeChild(textArea);
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(command).then(() => {
+                this.showToast(`Copied: ${command}`, 'success');
+            }).catch(err => {
+                console.error('Async: Could not copy text: ', err);
+                fallbackCopy();
+            });
+        } else {
+            // Fallback for non-secure contexts (HTTP)
+            fallbackCopy();
+        }
+    }
+
+    showToast(message, type) {
+        if (typeof Toastify !== 'undefined') {
+            const bg = type === 'success' ? "linear-gradient(to right, #00b09b, #96c93d)" : "linear-gradient(to right, #ff5f6d, #ffc371)";
+            Toastify({
+                text: message,
+                duration: 3000,
+                close: true,
+                gravity: "top", // `top` or `bottom`
+                position: "right", // `left`, `center` or `right`
+                style: {
+                    background: bg,
+                }
+            }).showToast();
+        } else {
+            console.log(type, message);
+        }
+    }
+
     updateModalTitle(metadata) {
         const title = document.getElementById('boca-modal-title');
         if (title) {
@@ -694,6 +793,11 @@ class RunsTableContentController {
                 <span style="color:#abb2bf;"> | </span>
                 <span style="color:#56b6c2;">${metadata.time}</span>
             `;
+
+            const rbxBtn = document.getElementById('boca-modal-rbx-btn');
+            if (rbxBtn) {
+                rbxBtn.onclick = () => this.copyRbxCommand(metadata);
+            }
         }
     }
 }

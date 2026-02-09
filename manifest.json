@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "clipboardWrite"
   ],
   "background": {
     "service_worker": "background.js"
@@ -27,11 +28,13 @@
       ],
       "css": [
         "libs/tom-select.css",
-        "libs/highlight.min.css"
+        "libs/highlight.min.css",
+        "libs/toastify.css"
       ],
       "js": [
         "libs/tom-select.js",
         "libs/highlight.min.js",
+        "libs/toastify.js",
         "utils.js",
         "RunsTableReorderer.js",
         "RunsTableContentController.js",
