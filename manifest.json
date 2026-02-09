@@ -37,6 +37,7 @@
         "libs/toastify.js",
         "libs/diff_match_patch.js",
         "utils.js",
+        "ModalHelper.js",
         "RunsTableReorderer.js",
         "RunsTableContentController.js",
         "ScoreTableContentController.js",

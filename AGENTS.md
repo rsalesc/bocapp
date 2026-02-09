@@ -59,3 +59,10 @@ This file documents key learnings about the Boca++ extension, its target environ
     -   Use **additional files** and **classes** to encapsulate logic (e.g., separate classes for UI injection, data parsing, event handling).
     -   Don't hesitate to create new files (e.g., `modules/UiController.js`, `modules/Parser.js`) to keep responsibilities clear.
     -   Ensure each class or module has a single, well-defined responsibility.
+
+## User Interaction
+
+-   **CRITICAL**: Do NOT use native browser `alert()` or `confirm()` dialogs.
+    -   They cause issues in the BOCA environment (e.g., closing immediately, blocking execution in weird ways).
+    -   ALWAYS use the custom `ModalHelper` library for confirmations and modals.
+    -   Use `Toastify` for notifications/alerts.

@@ -17,6 +17,10 @@ class RunsTableContentController {
         this.storedMaxNonJudged = 0;
         this.currentMaxJudged = 0;
         this.currentMaxNonJudged = 0;
+
+        // Problem Notifications
+        this.storageKeyNotifications = 'boca_plusplus_notifications';
+        this.notifications = []; // Array of { problem: 'A', color: '#ff0000', textColor: '#ffffff' }
     }
 
     init() {
@@ -27,6 +31,7 @@ class RunsTableContentController {
         this.applyAnswerColors();
         this.setupCodeViewerButtons();
         this.setupRunHighlighting();
+        this.applyProblemHighlights();
     }
 
     loadState() {
@@ -52,7 +57,19 @@ class RunsTableContentController {
 
         // Apply all
         this.updateRowVisibility();
+        this.updateRowVisibility();
         this.applyTimeFormat();
+        
+        // Load Notifications
+        try {
+            const savedNotifications = localStorage.getItem(this.storageKeyNotifications);
+            if (savedNotifications) {
+                this.notifications = JSON.parse(savedNotifications);
+            }
+        } catch (e) {
+            console.error("Error loading notifications:", e);
+            this.notifications = [];
+        }
     }
 
     getUniqueProblems() {
@@ -151,6 +168,15 @@ class RunsTableContentController {
         const problemColIndex = this.getColumnIndex('Problem');
         if (problemColIndex === -1) return;
 
+        // Header Styling
+        if (this.table.rows.length > 0) {
+            const th = this.table.rows[0].cells[problemColIndex];
+            if (th) {
+                th.style.width = '1%'; // Shrink to fit
+                th.style.whiteSpace = 'nowrap';
+            }
+        }
+
         const rows = Array.from(this.table.rows);
         // Skip header
         for (let i = 1; i < rows.length; i++) {
@@ -163,6 +189,11 @@ class RunsTableContentController {
             cell.onclick = null;
             cell.style.cursor = '';
             cell.title = '';
+            
+            // UI Refinements: Compact width, padding
+            cell.style.whiteSpace = 'nowrap';
+            cell.style.paddingLeft = '12px';
+            cell.style.paddingRight = '12px';
 
             // Create link
             const link = document.createElement('a');
@@ -1247,6 +1278,566 @@ class RunsTableContentController {
         timeLabel.appendChild(timeCheckbox);
         timeLabel.appendChild(document.createTextNode('Show time as HH:MM'));
         container.appendChild(timeLabel);
+
+        // Notifications Button
+        const notifyBtn = document.createElement('button');
+        notifyBtn.innerHTML = '🎨 Highlighting';
+        notifyBtn.style.padding = '5px 10px';
+        notifyBtn.style.cursor = 'pointer';
+        notifyBtn.style.marginLeft = '10px';
+        notifyBtn.onclick = () => this.showNotificationModal();
+        container.appendChild(notifyBtn);
+    }
+
+    // --- Problem Notification Feature ---
+
+    showNotificationModal() {
+        this.createNotificationModalIfNotExists();
+        this.renderNotificationList();
+        const modal = document.getElementById('boca-notification-modal');
+        if (modal) modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    closeNotificationModal() {
+        const modal = document.getElementById('boca-notification-modal');
+        if (modal) modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    createNotificationModalIfNotExists() {
+        if (document.getElementById('boca-notification-modal')) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'boca-notification-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0,0,0,0.6)';
+        modal.style.zIndex = '10001'; // Above code modal
+        modal.style.display = 'none';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+
+        const content = document.createElement('div');
+        content.style.backgroundColor = '#fff';
+        content.style.width = '500px';
+        content.style.maxWidth = '90%';
+        content.style.borderRadius = '8px';
+        content.style.padding = '20px';
+        content.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        content.style.display = 'flex';
+        content.style.flexDirection = 'column';
+
+        // Header
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '20px';
+        
+        
+        const title = document.createElement('h3');
+        title.innerText = 'Problem Highlighting';
+        title.style.margin = '0';
+
+        const closeBtn = document.createElement('span');
+        closeBtn.innerHTML = '&times;';
+        closeBtn.style.fontSize = '24px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.onclick = () => this.closeNotificationModal();
+
+        header.appendChild(title);
+        
+        // Import Button (if applicable)
+        const problemLink = document.querySelector('a[href*="problem.php"]');
+        if (problemLink) {
+             // Import Button
+             const importBtn = document.createElement('button');
+             importBtn.innerHTML = '📥 Import from BOCA';
+             importBtn.style.marginLeft = 'auto'; // Push to right
+             importBtn.style.marginRight = '15px';
+             importBtn.style.padding = '5px 10px';
+             importBtn.style.cursor = 'pointer';
+             importBtn.style.backgroundColor = '#61afef';
+             importBtn.style.color = 'white';
+             importBtn.style.border = 'none';
+             importBtn.style.borderRadius = '4px';
+             
+             importBtn.onclick = (e) => {
+                 e.stopPropagation();
+                 ModalHelper.confirm(
+                     "This will overwrite existing highlighting rules for matching problems. Continue?",
+                     () => this.importColorsFromProblemsPage(problemLink.href),
+                     null,
+                     {
+                         title: "Import from BOCA",
+                         confirmText: "Import",
+                         confirmType: "primary"
+                     }
+                 );
+             };
+             header.appendChild(importBtn);
+        }
+
+
+        // Clear All Button
+        const clearBtn = document.createElement('button');
+        clearBtn.innerHTML = '🗑️ Clear All';
+        clearBtn.style.marginLeft = '10px';
+        clearBtn.style.padding = '5px 10px';
+        clearBtn.style.cursor = 'pointer';
+        clearBtn.style.backgroundColor = '#e06c75'; // Red
+        clearBtn.style.color = 'white';
+        clearBtn.style.border = 'none';
+        clearBtn.style.borderRadius = '4px';
+        
+        clearBtn.onclick = (e) => {
+            e.stopPropagation();
+            ModalHelper.confirm(
+                "Are you sure you want to remove all highlighting rules? This action cannot be undone.",
+                () => this.clearAllNotifications(),
+                null,
+                {
+                    title: "Clear All Highlights",
+                    confirmText: "Clear All",
+                    confirmType: "danger" // Default is usually red anyway
+                }
+            );
+        };
+        header.appendChild(clearBtn);
+
+        header.appendChild(closeBtn);
+
+        // Body - Add New
+        const addForm = document.createElement('div');
+        addForm.style.display = 'flex';
+        addForm.style.gap = '10px';
+        addForm.style.marginBottom = '20px';
+        addForm.style.paddingBottom = '20px';
+        addForm.style.borderBottom = '1px solid #eee';
+
+        const problemInput = document.createElement('input');
+        problemInput.id = 'boca-notify-problem-input';
+        problemInput.type = 'text';
+        problemInput.placeholder = 'Letter (e.g. A)';
+        problemInput.style.padding = '8px';
+        problemInput.style.width = '120px'; // Fixed width
+        
+        const aliasInput = document.createElement('input');
+        aliasInput.id = 'boca-notify-alias-input';
+        aliasInput.type = 'text';
+        aliasInput.placeholder = 'Alias (Optional)';
+        aliasInput.style.padding = '8px';
+        aliasInput.style.flex = '1';
+
+        const colorInput = document.createElement('input');
+        colorInput.id = 'boca-notify-color-input';
+        colorInput.type = 'color';
+        colorInput.value = '#ff0000';
+        colorInput.style.height = '35px';
+        colorInput.style.width = '40px';
+        colorInput.style.padding = '0';
+        colorInput.style.border = 'none';
+        colorInput.style.cursor = 'pointer';
+
+        const addBtn = document.createElement('button');
+        addBtn.innerText = 'Add';
+        addBtn.style.padding = '8px 15px';
+        addBtn.style.cursor = 'pointer';
+        addBtn.style.backgroundColor = '#2196f3'; // Blue
+        addBtn.style.color = 'white';
+        addBtn.style.border = 'none';
+        addBtn.style.borderRadius = '4px';
+        addBtn.onclick = () => this.addNotificationFromInput();
+
+        addForm.appendChild(problemInput);
+        addForm.appendChild(aliasInput);
+        addForm.appendChild(colorInput);
+        addForm.appendChild(addBtn);
+
+        // Body - List
+        const listContainer = document.createElement('div');
+        listContainer.id = 'boca-notify-list';
+        listContainer.style.maxHeight = '300px';
+        listContainer.style.overflowY = 'auto';
+
+        content.appendChild(header);
+        content.appendChild(addForm);
+        content.appendChild(listContainer);
+        modal.appendChild(content);
+
+        modal.onclick = (e) => {
+            if (e.target === modal) this.closeNotificationModal();
+        };
+
+        document.body.appendChild(modal);
+    }
+
+    renderNotificationList() {
+        const container = document.getElementById('boca-notify-list');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (this.notifications.length === 0) {
+            container.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No notifications configured.</div>';
+            return;
+        }
+
+        this.notifications.forEach((item, index) => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.padding = '10px';
+            row.style.borderBottom = '1px solid #eee';
+            
+            // Editable Color Preview
+            const colorContainer = document.createElement('div');
+            colorContainer.style.position = 'relative';
+            colorContainer.style.marginRight = '10px';
+            colorContainer.style.width = '24px';
+            colorContainer.style.height = '24px';
+            
+            const colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.value = item.color;
+            colorInput.style.position = 'absolute';
+            colorInput.style.top = '0';
+            colorInput.style.left = '0';
+            colorInput.style.width = '100%';
+            colorInput.style.height = '100%';
+            colorInput.style.opacity = '0'; // Hide standard input UI
+            colorInput.style.cursor = 'pointer';
+            colorInput.onchange = (e) => this.updateNotificationColor(index, e.target.value);
+
+            const colorPreview = document.createElement('div');
+            colorPreview.style.width = '100%';
+            colorPreview.style.height = '100%';
+            colorPreview.style.borderRadius = '50%';
+            colorPreview.style.backgroundColor = item.color;
+            colorPreview.style.border = '1px solid #ddd';
+            colorPreview.style.pointerEvents = 'none'; // Let clicks pass to input
+
+            colorContainer.appendChild(colorInput);
+            colorContainer.appendChild(colorPreview);
+
+            const text = document.createElement('div');
+            text.innerHTML = `<strong>${item.problem}</strong>`;
+            text.style.marginRight = '10px';
+            text.style.minWidth = '20px';
+
+            const aliasEdit = document.createElement('input');
+            aliasEdit.type = 'text';
+            aliasEdit.value = item.alias || '';
+            aliasEdit.placeholder = 'Alias';
+            aliasEdit.style.flex = '1';
+            aliasEdit.style.marginRight = '10px';
+            aliasEdit.style.padding = '4px';
+            aliasEdit.style.border = '1px solid #ddd';
+            aliasEdit.style.borderRadius = '3px';
+            aliasEdit.onchange = (e) => this.updateNotificationAlias(index, e.target.value);
+            
+            // Show fullname as hint if not same as alias? 
+            // Maybe just show it below or as title?
+            if (item.fullname) {
+                aliasEdit.title = `Full Name: ${item.fullname}`;
+            }
+
+            const delBtn = document.createElement('button');
+            delBtn.innerHTML = '✕'; // Simple X
+            delBtn.title = 'Remove';
+            delBtn.style.background = 'none';
+            delBtn.style.border = 'none';
+            delBtn.style.color = '#999';
+            delBtn.style.cursor = 'pointer';
+            delBtn.style.fontSize = '16px';
+            delBtn.onclick = () => this.removeNotification(index);
+
+            row.appendChild(colorContainer);
+            row.appendChild(colorContainer);
+            row.appendChild(text);
+            row.appendChild(aliasEdit);
+            row.appendChild(delBtn);
+            container.appendChild(row);
+        });
+    }
+
+    updateNotificationColor(index, newColor) {
+        if (this.notifications[index]) {
+            this.notifications[index].color = newColor;
+            this.notifications[index].textColor = this.getContrastColor(newColor);
+            this.saveNotifications();
+            this.renderNotificationList(); // Re-render to update preview
+            this.applyProblemHighlights();
+        }
+    }
+
+    updateNotificationAlias(index, newAlias) {
+        if (this.notifications[index]) {
+            this.notifications[index].alias = newAlias;
+            this.saveNotifications();
+            // No need to re-render list as input is already updated
+            this.applyProblemHighlights(); 
+        }
+    }
+
+    clearAllNotifications() {
+        this.notifications = [];
+        this.saveNotifications();
+        this.renderNotificationList();
+        this.applyProblemHighlights();
+    }
+
+    addNotificationFromInput() {
+        const problemInput = document.getElementById('boca-notify-problem-input');
+        const aliasInput = document.getElementById('boca-notify-alias-input');
+        const colorInput = document.getElementById('boca-notify-color-input');
+        
+        const problem = problemInput.value.trim().toUpperCase(); // Normalize
+        const alias = aliasInput.value.trim();
+        const color = colorInput.value;
+
+        if (!problem) {
+            alert("Please enter a problem letter.");
+            return;
+        }
+
+        // Calculate contrast text color
+        const textColor = this.getContrastColor(color);
+
+        // Check if exists, update if so
+        const existingIndex = this.notifications.findIndex(n => n.problem === problem);
+        const newObj = { problem, color, textColor, alias, fullname: '', basename: '' };
+        
+        if (existingIndex !== -1) {
+            // Preserve other fields? 
+            // If user explicitly adds, we overwrite key fields.
+            // Maybe keep fullname if user didn't provide alias? No, logic is simple overwrite.
+            this.notifications[existingIndex] = { ...this.notifications[existingIndex], ...newObj };
+        } else {
+            this.notifications.push(newObj);
+        }
+
+        this.saveNotifications();
+        this.renderNotificationList();
+        this.applyProblemHighlights(); // Apply immediately
+        
+        // Clear input
+        problemInput.value = '';
+        aliasInput.value = '';
+    }
+
+    removeNotification(index) {
+        this.notifications.splice(index, 1);
+        this.saveNotifications();
+        this.renderNotificationList();
+        this.applyProblemHighlights();
+    }
+
+    saveNotifications() {
+        localStorage.setItem(this.storageKeyNotifications, JSON.stringify(this.notifications));
+    }
+
+    getContrastColor(hexColor) {
+        // Convert hex to RGB
+        const r = parseInt(hexColor.substr(1, 2), 16);
+        const g = parseInt(hexColor.substr(3, 2), 16);
+        const b = parseInt(hexColor.substr(5, 2), 16);
+        
+        // Calculate luminance
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        return (yiq >= 128) ? '#000000' : '#ffffff';
+    }
+
+    applyProblemHighlights() {
+        const problemColIndex = this.getColumnIndex('Problem');
+        if (problemColIndex === -1) return;
+
+        const rows = Array.from(this.table.rows);
+        
+        // Create a map for faster lookup
+        const problemMap = {};
+        this.notifications.forEach(n => {
+            // We store normalized (trimmed, uppercase usually implied) problem letters
+            problemMap[n.problem] = n;
+        });
+
+        // Skip header
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const cell = row.cells[problemColIndex];
+            if (!cell) continue;
+
+            const cellText = cell.textContent.trim();
+            // Try to match. Sometimes cells are "A - Problem Name".
+            // We check if the cell starts with the configured problem + space or dash, or matches exactly.
+            let match = null;
+
+            // Check exact match first
+            if (problemMap[cellText]) {
+                match = problemMap[cellText];
+            } else {
+                // Check if starts with any configured problem
+                for (const key in problemMap) {
+                    if (cellText === key || 
+                        cellText.startsWith(key + ' ') || 
+                        cellText.startsWith(key + '-') ||
+                        // Also check if fullname starts with it if we have it? No, key usually is short name "A"
+                        // What if we match by fullname? The table usually shows "A - Full Name" or just "A"
+                        // If we have fullname in metadata, we could try to match that too?
+                        (problemMap[key].fullname && cellText.includes(problemMap[key].fullname))
+                        ) {
+                        match = problemMap[key];
+                        break;
+                    }
+                }
+            }
+
+            if (match) {
+                cell.style.backgroundColor = match.color;
+                cell.style.color = match.textColor;
+                // Add title with metadata or alias
+                let title = '';
+                if (match.alias) {
+                    title = match.alias;
+                    // Append detail if useful?
+                    // title += ` (${match.fullname || match.problem})`;
+                } else if (match.fullname) {
+                    title = `${match.fullname} (${match.basename || '?'})`;
+                }
+                cell.title = title;
+                
+                // Since links inherit color, we might need to force link color too if setup
+                const link = cell.querySelector('a');
+                if (link) {
+                    link.style.color = match.textColor;
+                }
+            } else {
+                // Reset if not matched (important when removing notifications)
+                cell.style.backgroundColor = '';
+                cell.style.color = '';
+                cell.title = '';
+                const link = cell.querySelector('a');
+                if (link) {
+                    link.style.color = 'inherit';
+                }
+            }
+        }
+    }
+
+    async importColorsFromProblemsPage(url) {
+        // Confirmation is handled by UI now
+        try {
+            this.showToast("Fetching problems page...", "info");
+            const response = await fetch(url);
+            const text = await response.text();
+            
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            
+            // Find the correct table
+            // Strategy: Look for headers "Short Name" and "Color"
+            const tables = Array.from(doc.querySelectorAll('table'));
+            const targetTable = tables.find(t => t.innerText.includes('Short Name') && t.innerText.includes('Color'));
+            
+            if (!targetTable) {
+                throw new Error("Could not find Problems table in the fetched page.");
+            }
+
+            const rows = Array.from(targetTable.rows);
+            let importedCount = 0;
+
+            // Skipping header (row 0)
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const cells = row.cells;
+                
+                if (cells.length < 7) continue;
+
+                // Column indices based on browser inspection:
+                // 0: Problem #
+                // 1: Short Name (Letter)
+                // 2: Fullname
+                // 3: Basename
+                // 6: Color (contains inputs)
+
+                const shortName = cells[1].textContent.trim();
+                // Skip invalid or "General" problem (which is not a real problem)
+                if (!shortName || shortName === 'Short Name' || shortName === 'General') continue;
+
+                const fullname = cells[2].textContent.trim();
+                const basename = cells[3].textContent.trim();
+
+                // Extract Color
+                // Try to find input with name starting with 'color' inside cell 6
+                // Be careful to exclude 'colorname' inputs if possible, or just parse hex
+                const colorCell = cells[6];
+                const inputs = Array.from(colorCell.querySelectorAll('input[type="text"]'));
+                
+                // Usually BOCA has "colornameN" then "colorN" (hex)
+                // Or sometimes just "colorN"
+                // Let's look for the one that looks like a hex code or is the second input
+                
+                let hexColor = '#000000';
+                
+                // Strategy: Find input where name matches /^color\d+$/
+                const hexInput = inputs.find(inp => /^color\d+$/.test(inp.name));
+                
+                if (hexInput) {
+                    hexColor = hexInput.value;
+                } else {
+                     // Fallback: Try to find any input with hex value
+                     const potentialHex = inputs.find(inp => /^#[0-9A-Fa-f]{6}$/.test(inp.value));
+                     if (potentialHex) hexColor = potentialHex.value;
+                }
+
+                // If still fail, maybe it's just named 'color'
+                if (!hexColor || hexColor === '#000000') {
+                    // Check if there is a color name we can use? 
+                    // No, we need hex for our picker usually, but we can store it.
+                    // If verified extraction failure, defaults to black is safe.
+                }
+
+                // Add or Update
+                const textColor = this.getContrastColor(hexColor);
+                
+                const existingIndex = this.notifications.findIndex(n => n.problem === shortName);
+                const notificationObj = { 
+                    problem: shortName, 
+                    color: hexColor, 
+                    textColor,
+                    fullname, // Save original fullname
+                    basename,
+                    alias: fullname || shortName // Default alias to fullname
+                };
+
+                if (existingIndex !== -1) {
+                    // Start with existing object to preserve user custom alias if they customized it?
+                    // User request: "when importing from BOCA, by default, this alias should be the full name"
+                    // This implies overwrite. Or should we respect existing alias?
+                    // "by default" suggests initialization. If user edited it, maybe keep it?
+                    // BUT re-import often means "reset/sync". 
+                    // Let's overwrite alias with fullname to match "sync" behavior unless we want complexity.
+                    // Given the request "this alias should be the full name", I'll overwrite.
+                    this.notifications[existingIndex] = notificationObj;
+                } else {
+                    this.notifications.push(notificationObj);
+                }
+                importedCount++;
+            }
+
+            this.saveNotifications();
+            this.renderNotificationList();
+            this.applyProblemHighlights();
+            this.showToast(`Successfully imported ${importedCount} problems from BOCA.`, "success");
+
+        } catch (e) {
+            console.error("Import failed:", e);
+            this.showToast("Failed to import problems: " + e.message, "error");
+        }
     }
 }
 
