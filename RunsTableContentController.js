@@ -942,5 +942,144 @@ class RunsTableContentController {
         `;
         document.head.appendChild(style);
     }
+
+    injectControls(container) {
+        // --- Problem Select ---
+        const problemSelect = document.createElement('select');
+        problemSelect.id = 'boca-problem-select';
+        problemSelect.style.padding = '5px';
+        problemSelect.style.borderRadius = '4px';
+        problemSelect.style.border = '1px solid #ccc';
+        
+        // Populate options
+        const problems = this.getUniqueProblems();
+        
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.text = 'All Problems';
+        problemSelect.appendChild(allOption);
+        
+        problems.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.text = `${p}`;
+            problemSelect.appendChild(opt);
+        });
+
+        // Set initial value
+        problemSelect.value = this.problemFilter;
+
+        // Bind events
+        problemSelect.onchange = (e) => {
+            this.setProblemFilter(e.target.value);
+        };
+
+        // Register callback for sync
+        this.onProblemFilterChange = (val) => {
+            problemSelect.value = val;
+        };
+
+        container.appendChild(problemSelect);
+
+        // --- Team Select (with Tom Select) ---
+        const teamWrap = document.createElement('div');
+        teamWrap.style.width = '200px'; 
+        // Prevent TomSelect from messing up layout if it tries to be too smart
+        teamWrap.style.display = 'inline-block';
+
+        const teamSelect = document.createElement('select');
+        teamSelect.id = 'boca-team-select';
+        teamSelect.setAttribute('placeholder', 'Filter by Team...');
+        
+        // Populate options
+        const teams = this.getUniqueTeams();
+        
+        // Empty option for "All"
+        const allTeamOption = document.createElement('option');
+        allTeamOption.value = '';
+        allTeamOption.text = 'All Teams';
+        teamSelect.appendChild(allTeamOption);
+        
+        teams.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.text = t;
+            teamSelect.appendChild(opt);
+        });
+
+        // Set initial value (needs to be done before TomSelect init if possible, or via API)
+        teamSelect.value = this.teamFilter;
+
+        teamWrap.appendChild(teamSelect);
+        container.appendChild(teamWrap);
+
+        // Initialize Tom Select
+        if (typeof TomSelect !== 'undefined') {
+            const tsControl = new TomSelect(teamSelect, {
+                create: false,
+                sortField: {
+                    field: "text",
+                    direction: "asc"
+                },
+                maxOptions: null, // show all matches
+                onChange: (value) => {
+                    this.setTeamFilter(value);
+                }
+            });
+
+            // Sync from Controller -> UI
+            this.onTeamFilterChange = (val) => {
+                tsControl.setValue(val, true);
+            };
+        } else {
+            console.warn("TomSelect library not found. Falling back to standard select.");
+            // Fallback standard select events
+            teamSelect.onchange = (e) => {
+                this.setTeamFilter(e.target.value);
+            };
+            this.onTeamFilterChange = (val) => {
+                teamSelect.value = val;
+            };
+        }
+
+        // Checkbox: Hide Jury Runs
+        const juryLabel = document.createElement('label');
+        juryLabel.className = 'boca-checkbox-label';
+        
+        const juryCheckbox = document.createElement('input');
+        juryCheckbox.type = 'checkbox';
+        juryCheckbox.checked = this.juryHidden;
+        juryCheckbox.onchange = (e) => this.toggleJury(e.target.checked);
+        
+        juryLabel.appendChild(juryCheckbox);
+        juryLabel.appendChild(document.createTextNode('Hide jury runs'));
+        container.appendChild(juryLabel);
+
+        // Checkbox: Hide Deleted Runs
+        const deletedLabel = document.createElement('label');
+        deletedLabel.className = 'boca-checkbox-label';
+        
+        const deletedCheckbox = document.createElement('input');
+        deletedCheckbox.type = 'checkbox';
+        deletedCheckbox.checked = this.deletedHidden;
+        deletedCheckbox.onchange = (e) => this.toggleDeleted(e.target.checked);
+        
+        deletedLabel.appendChild(deletedCheckbox);
+        deletedLabel.appendChild(document.createTextNode('Hide deleted runs'));
+        container.appendChild(deletedLabel);
+
+        // Checkbox: HH:MM Format
+        const timeLabel = document.createElement('label');
+        timeLabel.className = 'boca-checkbox-label';
+        
+        const timeCheckbox = document.createElement('input');
+        timeCheckbox.type = 'checkbox';
+        timeCheckbox.checked = this.timeFormatHHMM;
+        timeCheckbox.onchange = (e) => this.toggleTimeFormat(e.target.checked);
+        
+        timeLabel.appendChild(timeCheckbox);
+        timeLabel.appendChild(document.createTextNode('Show time as HH:MM'));
+        container.appendChild(timeLabel);
     }
+}
 

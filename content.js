@@ -2,18 +2,85 @@
 let tableReorderer = null;
 let contentController = null;
 
+const PAGE_CONFIGS = [
+    {
+        name: 'Runs Page',
+        matcher: (url) => {
+           const allowed = [
+                'admin/run.php',
+                'judge/allrunlist.php',
+                'judge/run.php',
+                'judge/runchief.php',
+            ];
+            return allowed.some(page => url.pathname.endsWith(page));
+        },
+        init: () => {
+             const tables = Array.from(document.querySelectorAll('table'));
+             const table = tables.find(t => {
+                if (t.rows.length === 0) return false;
+                const firstRowText = t.rows[0].innerText;
+                return firstRowText.includes('Run #') && firstRowText.includes('Site') && firstRowText.includes('Time');
+            });
+
+            if (table) {
+                // Tag the table
+                table.classList.add('boca-runs-table');
+
+                // Initialize Content Controller
+                contentController = new RunsTableContentController(table);
+                contentController.ensurePlusPlusColumn();
+
+                // Initialize Reorderer
+                tableReorderer = new RunsTableReorderer(table);
+                tableReorderer.injectStyles();
+                tableReorderer.init();
+
+                // Init Controller
+                contentController.init();
+            } else {
+                console.log("Runs table not found.");
+            }
+        }
+    },
+    {
+        name: 'Score Page',
+        matcher: (url) => {
+            // Match score.php in various directories
+            return url.pathname.endsWith('score.php');
+        },
+        init: () => {
+             const tables = Array.from(document.querySelectorAll('table'));
+             // Helper: find table with Rank/User/Total usually
+             const table = tables.find(t => {
+                if (t.rows.length === 0) return false;
+                const firstRowText = t.rows[0].innerText;
+                // Adjust this heuristic as needed for Score table
+                return firstRowText.includes('User/Site') && firstRowText.includes('Total') && firstRowText.includes('Name');
+            });
+
+            if (table) {
+                table.classList.add('boca-score-table');
+
+                contentController = new ScoreTableContentController(table);
+                // Reorderer for Score Table (Reuse RunsTableReorderer as generic TableReorderer for now)
+                // We need unique storage keys so they don't conflict with Runs table
+                // However, RunsTableReorderer is currently hardcoded with specific keys.
+                // TODO: Refactor RunsTableReorderer to accept keys in constructor if we want reordering here.
+                // For now, let's just init the controller.
+                contentController.init();
+            } else {
+                console.log("Score table not found.");
+            }
+        }
+    }
+];
+
 // Ensure the DOM is fully loaded before running
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
     init();
 }
-
-const ALLOWED_PAGES = [
-    'admin/run.php',
-    'judge/run.php',
-    'judge/runchief.php'
-];
 
 async function init() {
     console.log("boca-plusplus: Content script loaded.");
@@ -31,35 +98,23 @@ async function init() {
         console.warn("boca-plusplus: failed to send active icon message", e);
     }
 
-    const currentUrl = window.location.href;
-    console.log("Current URL:", currentUrl);
+    const currentUrl = new URL(window.location.href);
+    console.log("Current URL:", currentUrl.href);
 
     // Apply generic modifications based on URL state
     applyStateFromUrl();
 
-    // Find the table first
-    const table = findRunsTable();
-    
-    if (table) {
-        // Tag the table for Scoped Stylings
-        table.classList.add('boca-runs-table');
+    // Identify Page
+    const pageConfig = PAGE_CONFIGS.find(config => config.matcher(currentUrl));
 
-        // Initialize Content Controller first to inject ++ column if needed
-        contentController = new RunsTableContentController(table);
-        contentController.ensurePlusPlusColumn();
-
-        // Initialize Reorderer (will see the new column)
-        tableReorderer = new RunsTableReorderer(table);
-        tableReorderer.injectStyles();
-        tableReorderer.init();
-
-        // Initialize rest of Content Controller functionalities
-        contentController.init();
+    if (pageConfig) {
+        console.log(`Detected page type: ${pageConfig.name}`);
+        pageConfig.init();
     } else {
-        console.log("Runs table not found.");
+        console.log("No specific page config matched.");
     }
 
-    // Inject UI (Controls)
+    // Inject UI (Controls) - generic injection that delegates to controller
     injectControls();
 }
 
@@ -77,12 +132,14 @@ async function shouldRun() {
         return false;
     }
 
-    // 2. Check allowed pages
-    const pathname = window.location.pathname;
-    const isAllowedPage = ALLOWED_PAGES.some(page => pathname.endsWith(page));
-    if (!isAllowedPage) {
-        console.log(`Current page ${pathname} is not in the allowed list. Bailing out.`);
-        return false;
+    // 2. Check allowed pages (Generic check + internal matchers)
+    // If we have a matcher, it's allowed.
+    const currentUrl = new URL(window.location.href);
+    const isAllowed = PAGE_CONFIGS.some(config => config.matcher(currentUrl));
+    
+    if (!isAllowed) {
+         console.log(`Current page ${currentUrl.pathname} is not in the allowed list. Bailing out.`);
+         return false;
     }
 
     // 3. Check if navigation menu is present
@@ -95,19 +152,6 @@ async function shouldRun() {
     return true;
 }
 
-function findRunsTable() {
-    const tables = Array.from(document.querySelectorAll('table'));
-    return tables.find(t => {
-        // Check if the first row exists and contains "Run #"
-        if (t.rows.length === 0) return false;
-        // BOCA headers might be in th or td, usually td in the first tr
-        const firstRowText = t.rows[0].innerText;
-        return firstRowText.includes('Run #') && firstRowText.includes('Site') && firstRowText.includes('Time');
-    });
-}
-
-
-
 function applyStateFromUrl() {
     const state = getAllUrlState();
     console.log("Applying state from URL:", state);
@@ -119,7 +163,7 @@ function applyStateFromUrl() {
 }
 
 function injectControls() {
-    console.log("On run page - injecting controls.");
+    console.log("Injecting controls.");
 
     let headerTable = null;
     const menuLinks = document.querySelectorAll('.menu');
@@ -129,15 +173,10 @@ function injectControls() {
         if (table) headerTable = table;
     }
     
+    // Fallback finding of where to inject
     if (!headerTable) {
         const tables = document.getElementsByTagName('table');
-        for (let table of tables) {
-            if (table.innerHTML.includes('run.php') && table.innerHTML.includes('score.php')) {
-                headerTable = table;
-                break; 
-            }
-        }
-        if (!headerTable && tables.length > 0) headerTable = tables[0];
+        if (tables.length > 0) headerTable = tables[0];
     }
 
     // Create a container for our extension's UI
@@ -163,154 +202,13 @@ function injectControls() {
     controlsRow.style.alignItems = 'center';
     container.appendChild(controlsRow);
 
-    // Problem Select (only if controller exists)
-    if (contentController) {
-        // --- Problem Select ---
-        const problemSelect = document.createElement('select');
-        problemSelect.id = 'boca-problem-select';
-        problemSelect.style.padding = '5px';
-        problemSelect.style.borderRadius = '4px';
-        problemSelect.style.border = '1px solid #ccc';
-        
-        // Populate options
-        const problems = contentController.getUniqueProblems();
-        
-        const allOption = document.createElement('option');
-        allOption.value = '';
-        allOption.text = 'All Problems';
-        problemSelect.appendChild(allOption);
-        
-        problems.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p;
-            opt.text = `${p}`;
-            problemSelect.appendChild(opt);
-        });
-
-        // Set initial value
-        problemSelect.value = contentController.problemFilter;
-
-        // Bind events
-        problemSelect.onchange = (e) => {
-            contentController.setProblemFilter(e.target.value);
-        };
-
-        // Register callback for sync
-        contentController.onProblemFilterChange = (val) => {
-            problemSelect.value = val;
-        };
-
-        controlsRow.appendChild(problemSelect);
-
-        // --- Team Select (with Tom Select) ---
-        const teamWrap = document.createElement('div');
-        teamWrap.style.width = '200px'; 
-        // Prevent TomSelect from messing up layout if it tries to be too smart
-        teamWrap.style.display = 'inline-block';
-
-        const teamSelect = document.createElement('select');
-        teamSelect.id = 'boca-team-select';
-        teamSelect.setAttribute('placeholder', 'Filter by Team...');
-        
-        // Populate options
-        const teams = contentController.getUniqueTeams();
-        
-        // Empty option for "All"
-        const allTeamOption = document.createElement('option');
-        allTeamOption.value = '';
-        allTeamOption.text = 'All Teams';
-        teamSelect.appendChild(allTeamOption);
-        
-        teams.forEach(t => {
-            const opt = document.createElement('option');
-            opt.value = t;
-            opt.text = t;
-            teamSelect.appendChild(opt);
-        });
-
-        // Set initial value (needs to be done before TomSelect init if possible, or via API)
-        teamSelect.value = contentController.teamFilter;
-
-        teamWrap.appendChild(teamSelect);
-        controlsRow.appendChild(teamWrap);
-
-        // Initialize Tom Select
-        // We need to wait a tick to ensure it's in the DOM if TomSelect requires it, 
-        // though usually it works on the element.
-        // Also checks if TomSelect is loaded.
-        if (typeof TomSelect !== 'undefined') {
-            const tsControl = new TomSelect(teamSelect, {
-                create: false,
-                sortField: {
-                    field: "text",
-                    direction: "asc"
-                },
-                maxOptions: null, // show all matches
-                onChange: (value) => {
-                    contentController.setTeamFilter(value);
-                }
-            });
-
-            // Sync from Controller -> UI
-            contentController.onTeamFilterChange = (val) => {
-                // setValue(val, silent) to avoid triggering onChange loop if we wanted,
-                // but our setTeamFilter checks duplicates or we simply re-set.
-                // TomSelect setValue(val, silent)
-                tsControl.setValue(val, true);
-            };
-        } else {
-            console.warn("TomSelect library not found. Falling back to standard select.");
-            // Fallback standard select events
-            teamSelect.onchange = (e) => {
-                contentController.setTeamFilter(e.target.value);
-            };
-            contentController.onTeamFilterChange = (val) => {
-                teamSelect.value = val;
-            };
-        }
+    // Let the specific controller inject its controls
+    if (contentController && typeof contentController.injectControls === 'function') {
+        contentController.injectControls(controlsRow);
     }
 
-    // Checkbox: Hide Jury Runs (only if controller exists)
-    if (contentController) {
-        const juryLabel = document.createElement('label');
-        juryLabel.className = 'boca-checkbox-label';
-        
-        const juryCheckbox = document.createElement('input');
-        juryCheckbox.type = 'checkbox';
-        juryCheckbox.checked = contentController.juryHidden;
-        juryCheckbox.onchange = (e) => contentController.toggleJury(e.target.checked);
-        
-        juryLabel.appendChild(juryCheckbox);
-        juryLabel.appendChild(document.createTextNode('Hide jury runs'));
-        controlsRow.appendChild(juryLabel);
-
-        // Checkbox: Hide Deleted Runs
-        const deletedLabel = document.createElement('label');
-        deletedLabel.className = 'boca-checkbox-label';
-        
-        const deletedCheckbox = document.createElement('input');
-        deletedCheckbox.type = 'checkbox';
-        deletedCheckbox.checked = contentController.deletedHidden;
-        deletedCheckbox.onchange = (e) => contentController.toggleDeleted(e.target.checked);
-        
-        deletedLabel.appendChild(deletedCheckbox);
-        deletedLabel.appendChild(document.createTextNode('Hide deleted runs'));
-        controlsRow.appendChild(deletedLabel);
-
-        // Checkbox: HH:MM Format
-        const timeLabel = document.createElement('label');
-        timeLabel.className = 'boca-checkbox-label';
-        
-        const timeCheckbox = document.createElement('input');
-        timeCheckbox.type = 'checkbox';
-        timeCheckbox.checked = contentController.timeFormatHHMM;
-        timeCheckbox.onchange = (e) => contentController.toggleTimeFormat(e.target.checked);
-        
-        timeLabel.appendChild(timeCheckbox);
-        timeLabel.appendChild(document.createTextNode('Show time as HH:MM'));
-        controlsRow.appendChild(timeLabel);
-    }
-
+    // Common Controls (like Reset, etc.)
+    
     // Button to change background color (Demo)
     const colorButton = document.createElement('button');
     colorButton.innerText = 'Random BG';

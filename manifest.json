@@ -38,6 +38,7 @@
         "utils.js",
         "RunsTableReorderer.js",
         "RunsTableContentController.js",
+        "ScoreTableContentController.js",
         "content.js"
       ],
       "run_at": "document_end"
