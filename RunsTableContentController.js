@@ -482,7 +482,9 @@ class RunsTableContentController {
             if (runCell) {
                 const runLink = runCell.querySelector('a');
                 if (runLink) {
-                    runPageUrl = runLink.href;
+                    // Replace runedit.php with runview.php to get the run page url
+                    // to ensure we do not lock the run.
+                    runPageUrl = runLink.href.replace("runedit.php", "runview.php");
                     runId = runCell.textContent.trim();
                 }
             }
