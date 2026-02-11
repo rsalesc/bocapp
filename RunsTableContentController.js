@@ -1,6 +1,7 @@
 class RunsTableContentController {
     constructor(table) {
         this.table = table;
+        this.codeViewer = new CodeViewer();
         this.storageKeyTimeFormat = 'boca_plusplus_time_format';
         this.juryHidden = false;
         this.deletedHidden = false;
@@ -484,7 +485,10 @@ class RunsTableContentController {
                 if (runLink) {
                     // Replace runedit.php with runview.php to get the run page url
                     // to ensure we do not lock the run.
-                    runPageUrl = runLink.href.replace("runedit.php", "runview.php");
+                    runPageUrl = runLink.href;
+                    if (window.location.href.includes("judge/")) {
+                        runPageUrl = runPageUrl.replace("runedit.php", "runview.php");
+                    }
                     runId = runCell.textContent.trim();
                 }
             }
@@ -568,90 +572,68 @@ class RunsTableContentController {
     }
 
     async openCodeViewer(runPageUrl, metadata) {
-        this.createModalIfNotExists();
-        this.showModal();
-        this.updateModalTitle(metadata);
-        
-        // Reset state
-        const pre = document.querySelector('#boca-code-modal pre');
-        if (pre) {
-            pre.innerHTML = '';
-            const newCode = document.createElement('code');
-            newCode.id = 'boca-code-content';
-            newCode.style.fontFamily = 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace';
-            newCode.style.fontSize = '13px';
-            newCode.style.display = 'block';
-            newCode.style.padding = '15px';
-            pre.appendChild(newCode);
-        }
+        // Prepare Modal
+        this.codeViewer.show({
+            title: this.getModalTitleHtml(metadata)
+        });
+        this.codeViewer.setLoading();
 
         // Add Diff Button if not present
-        const actions = document.querySelector('#boca-code-modal .modal-actions');
-        if (actions && !document.getElementById('boca-modal-diff-btn')) {
-            const diffBtn = document.createElement('button');
-            diffBtn.id = 'boca-modal-diff-btn';
-            diffBtn.style.marginRight = '10px';
-            diffBtn.style.padding = '5px 10px';
-            diffBtn.style.cursor = 'pointer';
-            diffBtn.style.backgroundColor = '#d19a66'; // Orange-ish
-            diffBtn.style.border = 'none';
-            diffBtn.style.color = 'white';
-            diffBtn.style.borderRadius = '4px';
-            diffBtn.innerHTML = '⇄ Diff with Last';
-            diffBtn.onclick = () => this.handleDiffWithLast(metadata, runPageUrl);
-            
-            // Insert before download button
-            const downloadBtn = document.getElementById('boca-modal-download-btn');
-            actions.insertBefore(diffBtn, downloadBtn);
-        }
-
-        const codeBlock = document.getElementById('boca-code-content');
-        const statusEl = document.getElementById('boca-code-status');
-        const downloadLinkBtn = document.getElementById('boca-modal-download-btn');
-        const diffBtn = document.getElementById('boca-modal-diff-btn');
+        const diffBtn = document.createElement('button');
+        diffBtn.id = 'boca-modal-diff-btn';
+        Object.assign(diffBtn.style, {
+            marginRight: '10px',
+            padding: '5px 10px',
+            cursor: 'pointer',
+            backgroundColor: '#d19a66',
+            border: 'none',
+            color: 'white',
+            borderRadius: '4px',
+            marginLeft: '10px'
+        });
+        diffBtn.innerHTML = '⇄ Diff with Last';
+        diffBtn.onclick = () => this.handleDiffWithLast(metadata, runPageUrl);
         
-        statusEl.textContent = 'Loading source code...';
-        statusEl.style.display = 'block';
-        downloadLinkBtn.style.display = 'none';
-        if (diffBtn) diffBtn.style.display = 'none'; // Hide until loaded
+        // Add RBX Button
+        const rbxModalBtn = document.createElement('button');
+        rbxModalBtn.id = 'boca-modal-rbx-btn';
+        Object.assign(rbxModalBtn.style, {
+            marginRight: '10px',
+            padding: '5px 10px',
+            cursor: 'pointer',
+            backgroundColor: '#98c379',
+            border: 'none',
+            color: 'white',
+            borderRadius: '4px'
+        });
+        rbxModalBtn.innerHTML = '💻 Copy RBX';
+        rbxModalBtn.onclick = () => this.copyRbxCommand(metadata);
+
+        // Add custom actions
+        const customActions = document.getElementById('boca-modal-custom-actions');
+        if (customActions) {
+            customActions.innerHTML = '';
+            customActions.appendChild(rbxModalBtn);
+            customActions.appendChild(diffBtn);
+        }
 
         try {
             this.currentRunSource = await this.fetchRunSource(runPageUrl);
             const { code, filename, downloadUrl } = this.currentRunSource;
 
             if (code) {
-                // Determine language
-                let langClass = '';
-                const langLower = metadata.language.toLowerCase();
-                const filenameLower = filename.toLowerCase();
-
-                if (langLower.includes('c++') || langLower.includes('cpp') || filenameLower.endsWith('.cpp') || filenameLower.endsWith('.cc')) langClass = 'language-cpp';
-                else if (langLower.includes('java') || filenameLower.endsWith('.java')) langClass = 'language-java';
-                else if (langLower.includes('python') || filenameLower.endsWith('.py')) langClass = 'language-python';
-                else if (langLower.includes('c') || filenameLower.endsWith('.c')) langClass = 'language-c';
-                else if (langLower.includes('kotlin') || filenameLower.endsWith('.kt')) langClass = 'language-kotlin';
-                
-                statusEl.style.display = 'none';
-                codeBlock.textContent = code;
-                if (langClass) codeBlock.classList.add(langClass);
-                if (window.hljs) window.hljs.highlightElement(codeBlock);
-
-                if (downloadUrl) {
-                    downloadLinkBtn.onclick = () => window.open(downloadUrl, '_blank');
-                    downloadLinkBtn.style.display = 'inline-block';
-                    downloadLinkBtn.innerText = `Download`;
-                }
-
-                if (diffBtn) diffBtn.style.display = 'inline-block';
+                this.codeViewer.setCode(code, metadata.language, filename, downloadUrl);
             } else {
-                statusEl.textContent = "Could not find source code.";
+                this.codeViewer.setError("Could not find source code.");
             }
 
         } catch (e) {
             console.error("Error loading code:", e);
-            statusEl.textContent = "Error loading source code.";
+            this.codeViewer.setError("Error loading source code.");
         }
     }
+
+
 
     async fetchRunSource(runPageUrl) {
         console.log("Fetching run page:", runPageUrl);
@@ -693,23 +675,17 @@ class RunsTableContentController {
     }
 
     async handleDiffWithLast(metadata, currentRunPageUrl) {
-        const statusEl = document.getElementById('boca-code-status');
-        const codeBlock = document.getElementById('boca-code-content');
+        this.codeViewer.setLoading('Finding last run...');
         
-        statusEl.textContent = 'Finding last run...';
-        statusEl.style.display = 'block';
-        codeBlock.innerHTML = ''; // Clear current code
-
         const lastRun = this.findLastRun(metadata.runId, metadata.problem, metadata.team);
 
         if (!lastRun) {
-            statusEl.textContent = 'No previous run found for comparison.';
+            this.codeViewer.setError('No previous run found for comparison.');
             return;
         }
 
         const lastRunMetadata = this.extractRowMetadata(lastRun.row, lastRun.runId);
-
-        statusEl.textContent = `Fetching run ${lastRun.runId}...`;
+        this.codeViewer.setLoading(`Fetching run ${lastRun.runId}...`);
         
         try {
             const { runPageUrl } = this.extractRunInfo(lastRun.row);
@@ -721,15 +697,17 @@ class RunsTableContentController {
             const lastRunSource = await this.fetchRunSource(runPageUrl);
 
             if (this.currentRunSource.code && lastRunSource.code) {
-                statusEl.style.display = 'none';
-                this.renderDiff(lastRunSource.code, this.currentRunSource.code, lastRunMetadata, metadata);
+                const oldInfo = `Run ${lastRunMetadata.runId} (${lastRunMetadata.answer}, ${lastRunMetadata.time} - ${lastRunMetadata.language})`;
+                const newInfo = `Run ${metadata.runId} (Current)`;
+                
+                this.codeViewer.renderDiff(lastRunSource.code, this.currentRunSource.code, oldInfo, newInfo);
             } else {
-                 statusEl.textContent = 'Failed to fetch source codes for diff.';
+                 this.codeViewer.setError('Failed to fetch source codes for diff.');
             }
 
         } catch (e) {
             console.error("Error in handleDiffWithLast:", e);
-            statusEl.textContent = 'Error computing diff.';
+            this.codeViewer.setError('Error computing diff.');
         }
     }
 
@@ -768,288 +746,35 @@ class RunsTableContentController {
         return foundRow ? { row: foundRow, runId: maxRunId } : null;
     }
 
-    renderDiff(oldText, newText, oldMetadata, newMetadata) {
-        try {
-            if (typeof diff_match_patch === 'undefined') {
-                throw new Error("diff_match_patch library not loaded");
-            }
-
-            const dmp = new diff_match_patch();
-            const a = dmp.diff_linesToChars_(oldText, newText);
-            const lineText1 = a.chars1;
-            const lineText2 = a.chars2;
-            const lineArray = a.lineArray;
-            
-            const diffs = dmp.diff_main(lineText1, lineText2, false);
-            dmp.diff_charsToLines_(diffs, lineArray);
-            dmp.diff_cleanupSemantic(diffs);
-
-            const container = document.getElementById('boca-code-content');
-            container.innerHTML = '';
-            container.classList = ''; // Remove language class
-
-            const diffContainer = document.createElement('div');
-            diffContainer.style.fontFamily = 'Consolas, monospace';
-            diffContainer.style.whiteSpace = 'pre-wrap';
-
-            const header = document.createElement('div');
-            header.style.marginBottom = '10px';
-            header.style.paddingBottom = '10px';
-            header.style.borderBottom = '1px solid #555';
-            header.style.fontSize = '14px';
-            
-            const oldInfo = `Run ${oldMetadata.runId} (${oldMetadata.answer}, ${oldMetadata.time} - ${oldMetadata.language})`;
-            const newInfo = `Run ${newMetadata.runId} (Current)`;
-
-            header.innerHTML = `Comparing: <strong>${oldInfo}</strong> <br/> vs <br/> <strong>${newInfo}</strong>`;
-            diffContainer.appendChild(header);
-
-            diffs.forEach(diff => {
-                const type = diff[0];
-                const text = diff[1];
-                
-                const span = document.createElement('span');
-                span.textContent = text;
-                
-                if (type === 1) { // Insert (DIFF_INSERT)
-                    span.style.backgroundColor = 'rgba(40, 167, 69, 0.2)';
-                    span.style.color = '#a6e22e';
-                } else if (type === -1) { // Delete (DIFF_DELETE)
-                    span.style.backgroundColor = 'rgba(220, 53, 69, 0.2)';
-                    span.style.color = '#f92672';
-                    span.style.textDecoration = 'line-through'; 
-                }
-                diffContainer.appendChild(span);
-            });
-            
-            container.appendChild(diffContainer);
-
-        } catch (e) {
-            console.error("Error in renderDiff:", e);
-            const container = document.getElementById('boca-code-content');
-            container.textContent = "Error rendering diff: " + e.message;
-        }
-    }
-
-    createModalIfNotExists() {
-        if (document.getElementById('boca-code-modal')) return;
-
-        const modal = document.createElement('div');
-        modal.id = 'boca-code-modal';
-        modal.style.position = 'fixed';
-        modal.style.top = '0';
-        modal.style.left = '0';
-        modal.style.width = '100%';
-        modal.style.height = '100%';
-        modal.style.backgroundColor = 'rgba(0,0,0,0.6)';
-        modal.style.zIndex = '10000';
-        modal.style.display = 'none';
-        modal.style.justifyContent = 'center';
-        modal.style.alignItems = 'center';
-
-        const content = document.createElement('div');
-        content.style.backgroundColor = '#282c34'; // Atom One Dark bg
-        content.style.color = '#abb2bf';
-        content.style.width = '80%';
-        content.style.maxWidth = '1000px';
-        content.style.height = '80%';
-        content.style.borderRadius = '8px';
-        content.style.display = 'flex';
-        content.style.flexDirection = 'column';
-        content.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
-        content.style.overflow = 'hidden';
-
-        // Header
-        const header = document.createElement('div');
-        header.style.padding = '15px';
-        header.style.borderBottom = '1px solid #3e4451';
-        header.style.display = 'flex';
-        header.style.justifyContent = 'space-between';
-        header.style.alignItems = 'center';
-
-        const title = document.createElement('h3');
-        title.id = 'boca-modal-title';
-        title.style.margin = '0';
-        title.style.fontSize = '16px';
-        title.style.fontWeight = 'normal';
-        title.style.color = '#e06c75'; // Reddish for emphasis
-
-        const actions = document.createElement('div');
-        actions.className = 'modal-actions';
-        
-        const rbxModalBtn = document.createElement('button');
-        rbxModalBtn.id = 'boca-modal-rbx-btn';
-        rbxModalBtn.style.marginRight = '10px';
-        rbxModalBtn.style.padding = '5px 10px';
-        rbxModalBtn.style.cursor = 'pointer';
-        rbxModalBtn.style.backgroundColor = '#98c379';
-        rbxModalBtn.style.border = 'none';
-        rbxModalBtn.style.color = 'white';
-        rbxModalBtn.style.borderRadius = '4px';
-        rbxModalBtn.innerHTML = '💻 Copy RBX';
-
-        const downloadBtn = document.createElement('button');
-        downloadBtn.id = 'boca-modal-download-btn';
-        downloadBtn.style.marginRight = '15px';
-        downloadBtn.style.padding = '5px 10px';
-        downloadBtn.style.cursor = 'pointer';
-        downloadBtn.style.backgroundColor = '#61afef';
-        downloadBtn.style.border = 'none';
-        downloadBtn.style.color = 'white';
-        downloadBtn.style.borderRadius = '4px';
-
-        const closeBtn = document.createElement('span');
-        closeBtn.innerHTML = '&times;';
-        closeBtn.style.fontSize = '24px';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.style.lineHeight = '1';
-        closeBtn.onclick = () => this.closeModal();
-
-        actions.appendChild(rbxModalBtn);
-        actions.appendChild(downloadBtn);
-        actions.appendChild(closeBtn);
-        header.appendChild(title);
-        header.appendChild(actions);
-
-        // Body
-        const body = document.createElement('div');
-        body.style.flex = '1';
-        body.style.padding = '0';
-        body.style.overflow = 'auto';
-        body.style.position = 'relative';
-
-        const status = document.createElement('div');
-        status.id = 'boca-code-status';
-        status.style.padding = '20px';
-        status.style.textAlign = 'center';
-
-        const pre = document.createElement('pre');
-        pre.style.margin = '0';
-        pre.style.minHeight = '100%';
-        
-        const code = document.createElement('code');
-        code.id = 'boca-code-content';
-        code.style.fontFamily = 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace';
-        code.style.fontSize = '13px';
-        code.style.display = 'block';
-        code.style.padding = '15px';
-        
-        pre.appendChild(code);
-        body.appendChild(status);
-        body.appendChild(pre);
-
-        content.appendChild(header);
-        content.appendChild(body);
-        modal.appendChild(content);
-
-        // Click outside to close
-        modal.onclick = (e) => {
-            if (e.target === modal) this.closeModal();
-        };
-
-        document.body.appendChild(modal);
-    }
-
-    showModal() {
-        const modal = document.getElementById('boca-code-modal');
-        if (modal) modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden'; // Prevent highlighting background
-    }
-
-    closeModal() {
-        const modal = document.getElementById('boca-code-modal');
-        if (modal) modal.style.display = 'none';
-        document.body.style.overflow = '';
+    // renderDiff, createModalIfNotExists, showModal, closeModal, view methods removed as they are now in CodeViewer.js
+    // showToast remove as it is in utils.js
+    
+    getModalTitleHtml(metadata) {
+        return `
+            <span style="color:#61afef; font-weight:bold;">Run ${metadata.runId}</span> 
+            <span style="color:#abb2bf;"> | </span>
+            <span style="color:#98c379;">${metadata.team}</span>
+            <span style="color:#abb2bf;"> | </span>
+            <span style="color:#e5c07b;">Problem ${metadata.problem} (${metadata.language})</span>
+            <span style="color:#abb2bf;"> | </span>
+            <span style="color:#c678dd; font-weight:bold;">${metadata.answer}</span>
+            <span style="color:#abb2bf;"> | </span>
+            <span style="color:#56b6c2;">${metadata.time}</span>
+        `;
     }
 
     copyRbxCommand(metadata) {
         // Extract problem letter
-        // Assuming format "A - Problem Name" or just "A"
         let problemLetter = metadata.problem.split('-')[0].trim();
-        // If problem letter is empty or strange (e.g. maybe just the name), fallback to whole string but likely just the first char or word
         if (!problemLetter) problemLetter = metadata.problem.charAt(0);
 
         const command = `rbx on ${problemLetter} run @boca/${metadata.runId}-${metadata.site}`;
 
-        const fallbackCopy = () => {
-            const textArea = document.createElement("textarea");
-            textArea.value = command;
-            
-            // Ensure it's not visible but part of DOM
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            
-            try {
-                const successful = document.execCommand('copy');
-                if (successful) {
-                    this.showToast(`Copied: ${command}`, 'success');
-                } else {
-                    this.showToast('Copy command failed', 'error');
-                }
-            } catch (err) {
-                this.showToast('Unable to copy', 'error');
-            }
-            
-            document.body.removeChild(textArea);
-        };
-
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(command).then(() => {
-                this.showToast(`Copied: ${command}`, 'success');
-            }).catch(err => {
-                console.error('Async: Could not copy text: ', err);
-                fallbackCopy();
-            });
-        } else {
-            // Fallback for non-secure contexts (HTTP)
-            fallbackCopy();
-        }
+        copyToClipboard(command);
     }
 
-    showToast(message, type) {
-        if (typeof Toastify !== 'undefined') {
-            const bg = type === 'success' ? "linear-gradient(to right, #00b09b, #96c93d)" : "linear-gradient(to right, #ff5f6d, #ffc371)";
-            Toastify({
-                text: message,
-                duration: 3000,
-                close: true,
-                gravity: "top", // `top` or `bottom`
-                position: "right", // `left`, `center` or `right`
-                style: {
-                    background: bg,
-                }
-            }).showToast();
-        } else {
-            console.log(type, message);
-        }
-    }
+    // updateModalTitle removed (use getModalTitleHtml + codeViewer.setTitle)
 
-    updateModalTitle(metadata) {
-        const title = document.getElementById('boca-modal-title');
-        if (title) {
-            title.innerHTML = `
-                <span style="color:#61afef; font-weight:bold;">Run ${metadata.runId}</span> 
-                <span style="color:#abb2bf;"> | </span>
-                <span style="color:#98c379;">${metadata.team}</span>
-                <span style="color:#abb2bf;"> | </span>
-                <span style="color:#e5c07b;">Problem ${metadata.problem} (${metadata.language})</span>
-                <span style="color:#abb2bf;"> | </span>
-                <span style="color:#c678dd; font-weight:bold;">${metadata.answer}</span>
-                <span style="color:#abb2bf;"> | </span>
-                <span style="color:#56b6c2;">${metadata.time}</span>
-            `;
-
-            const rbxBtn = document.getElementById('boca-modal-rbx-btn');
-            if (rbxBtn) {
-                rbxBtn.onclick = () => this.copyRbxCommand(metadata);
-            }
-        }
-    }
 
     setupRunHighlighting() {
         this.injectHighlightStyles();

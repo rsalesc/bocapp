@@ -72,6 +72,25 @@ const PAGE_CONFIGS = [
                 console.log("Score table not found.");
             }
         }
+    },
+    {
+        name: 'Run Edit/View Page',
+        matcher: (url) => {
+            const allowed = [
+                'admin/runedit.php',
+                'judge/runview.php',
+                'judge/runedit.php',
+                'judge/runchiefedit.php'
+            ];
+            return allowed.some(page => url.pathname.endsWith(page));
+        },
+        init: () => {
+             console.log("RunEditContentController: Page matched.");
+             const controller = new RunEditContentController();
+             controller.init();
+             // Assign to global for debugging/access if needed, though mostly standalone
+             contentController = controller;
+        }
     }
 ];
 
@@ -143,11 +162,12 @@ async function shouldRun() {
     }
 
     // 3. Check if navigation menu is present
-    const menuLinks = document.querySelectorAll('.menu');
-    if (menuLinks.length === 0) {
-        console.log("Navigation menu not found. Bailing out.");
-        return false;
-    }
+    // 3. Check if navigation menu is present - DISABLED as some valid pages (runview) might not have it
+    // const menuLinks = document.querySelectorAll('.menu');
+    // if (menuLinks.length === 0) {
+    //     console.log("Navigation menu not found. Bailing out.");
+    //     return false;
+    // }
 
     return true;
 }

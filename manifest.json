@@ -39,8 +39,10 @@
         "utils.js",
         "ModalHelper.js",
         "RunsTableReorderer.js",
+        "CodeViewer.js",
         "RunsTableContentController.js",
         "ScoreTableContentController.js",
+        "RunEditContentController.js",
         "content.js"
       ],
       "run_at": "document_end"
