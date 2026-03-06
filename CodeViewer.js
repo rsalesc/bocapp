@@ -115,12 +115,52 @@ class CodeViewer {
             fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
             fontSize: '13px',
             display: 'block',
-            padding: '15px'
+            padding: '0'
         });
-        
+
         pre.appendChild(code);
         body.appendChild(status);
         body.appendChild(pre);
+
+        // Line numbers stylesheet
+        const style = document.createElement('style');
+        style.textContent = `
+            .boca-code-table {
+                border-collapse: collapse;
+                width: 100%;
+            }
+            .boca-code-table td {
+                vertical-align: top;
+                padding: 0;
+            }
+            .boca-code-table .boca-line-numbers {
+                width: 1px;
+                white-space: nowrap;
+                padding: 15px 0;
+                text-align: right;
+                user-select: none;
+                -webkit-user-select: none;
+                color: #636d83;
+                border-right: 1px solid #3e4451;
+                font-family: Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+                font-size: 13px;
+                line-height: 1.45;
+            }
+            .boca-code-table .boca-line-numbers span {
+                display: block;
+                padding: 0 12px 0 15px;
+            }
+            .boca-code-table .boca-code-lines {
+                padding: 15px;
+                font-size: 13px;
+                line-height: 1.45;
+                overflow-x: auto;
+            }
+            .boca-code-table .boca-code-lines code {
+                padding: 0 !important;
+            }
+        `;
+        document.head.appendChild(style);
 
         content.appendChild(header);
         content.appendChild(body);
@@ -186,12 +226,28 @@ class CodeViewer {
 
     setCode(codeText, language, filename, downloadUrl) {
         const statusEl = document.getElementById('boca-code-status');
-        const codeBlock = document.getElementById('boca-code-content');
+        let codeBlock = document.getElementById('boca-code-content');
         const downloadBtn = document.getElementById('boca-modal-download-btn');
 
         if (statusEl) statusEl.style.display = 'none';
-        
+
+        // Reset: if line numbers table was injected, restore clean pre>code structure
         if (codeBlock) {
+            const pre = codeBlock.closest('pre');
+            if (pre && pre.querySelector('.boca-code-table')) {
+                pre.innerHTML = '';
+                const freshCode = document.createElement('code');
+                freshCode.id = 'boca-code-content';
+                Object.assign(freshCode.style, {
+                    fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
+                    fontSize: '13px',
+                    display: 'block',
+                    padding: '0'
+                });
+                pre.appendChild(freshCode);
+                codeBlock = freshCode;
+            }
+
             codeBlock.textContent = codeText;
             delete codeBlock.dataset.highlighted;
             
@@ -208,6 +264,9 @@ class CodeViewer {
 
             if (langClass) codeBlock.classList.add(langClass);
             if (window.hljs) window.hljs.highlightElement(codeBlock);
+
+            // Wrap in a table with line numbers
+            this._addLineNumbers(codeBlock);
         }
 
         if (downloadBtn && downloadUrl) {
@@ -280,6 +339,53 @@ class CodeViewer {
             console.error("Error in renderDiff:", e);
             if (container) container.textContent = "Error rendering diff: " + e.message;
         }
+    }
+
+    _addLineNumbers(codeBlock) {
+        const pre = codeBlock.parentElement;
+        if (!pre) return;
+
+        const lines = codeBlock.innerHTML.split('\n');
+        // Remove trailing empty line if present
+        if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+        const table = document.createElement('table');
+        table.className = 'boca-code-table';
+
+        const lineNumsTd = document.createElement('td');
+        lineNumsTd.className = 'boca-line-numbers';
+
+        const codeTd = document.createElement('td');
+        codeTd.className = 'boca-code-lines';
+
+        for (let i = 1; i <= lines.length; i++) {
+            const span = document.createElement('span');
+            span.textContent = i;
+            lineNumsTd.appendChild(span);
+        }
+
+        const newCode = document.createElement('code');
+        newCode.id = 'boca-code-content';
+        newCode.className = codeBlock.className;
+        Object.assign(newCode.style, {
+            fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
+            fontSize: '13px',
+            display: 'block',
+            padding: '0',
+            whiteSpace: 'pre'
+        });
+        newCode.innerHTML = lines.join('\n');
+
+        codeTd.appendChild(newCode);
+
+        const row = document.createElement('tr');
+        row.appendChild(lineNumsTd);
+        row.appendChild(codeTd);
+        table.appendChild(row);
+
+        // Replace the pre content with the table
+        pre.innerHTML = '';
+        pre.appendChild(table);
     }
 
     // Helper to add custom buttons to the modal header
