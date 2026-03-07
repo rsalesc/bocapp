@@ -11,13 +11,13 @@ class RunsTableContentController {
         this.onProblemFilterChange = null;
         this.onTeamFilterChange = null;
         
-        // New Run Highlighting State
-        this.storageKeyMaxJudged = 'boca_plusplus_max_judged_run';
-        this.storageKeyMaxNonJudged = 'boca_plusplus_max_non_judged_run';
-        this.storedMaxJudged = 0;
-        this.storedMaxNonJudged = 0;
-        this.currentMaxJudged = 0;
-        this.currentMaxNonJudged = 0;
+        // New Run Highlighting State (time-based)
+        this.storageKeyMaxJudgedTime = 'boca_plusplus_max_judged_time';
+        this.storageKeyMaxNonJudgedTime = 'boca_plusplus_max_non_judged_time';
+        this.storedMaxJudgedTime = 0;
+        this.storedMaxNonJudgedTime = 0;
+        this.currentMaxJudgedTime = 0;
+        this.currentMaxNonJudgedTime = 0;
 
         // Problem Notifications
         this.storageKeyNotifications = 'boca_plusplus_notifications';
@@ -546,7 +546,7 @@ class RunsTableContentController {
                 // Get Metadata
                 const metadata = this.extractRowMetadata(row, runId);
                 
-                this.openCodeViewer(runPageUrl, metadata);
+                this.openCodeViewer(runPageUrl, metadata, row);
             };
         }
     }
@@ -625,7 +625,7 @@ class RunsTableContentController {
 
                 // Extract metadata on click to ensure it's up-to-date (e.g. time format)
                 const metadata = this.extractRowMetadata(row, runId);
-                this.openCodeViewer(runPageUrl, metadata);
+                this.openCodeViewer(runPageUrl, metadata, row);
             };
 
             // RBX Run Button
@@ -649,7 +649,7 @@ class RunsTableContentController {
         }
     }
 
-    async openCodeViewer(runPageUrl, metadata) {
+    async openCodeViewer(runPageUrl, metadata, row) {
         // Prepare Modal
         this.codeViewer.show({
             title: this.getModalTitleHtml(metadata)
@@ -670,7 +670,7 @@ class RunsTableContentController {
             marginLeft: '10px'
         });
         diffBtn.innerHTML = '⇄ Diff with Last';
-        diffBtn.onclick = () => this.handleDiffWithLast(metadata, runPageUrl);
+        diffBtn.onclick = () => this.handleDiffWithLast(metadata, runPageUrl, row);
         
         // Add RBX Button
         const rbxModalBtn = document.createElement('button');
@@ -752,10 +752,11 @@ class RunsTableContentController {
         return { code: null, filename: null, downloadUrl: null };
     }
 
-    async handleDiffWithLast(metadata, currentRunPageUrl) {
+    async handleDiffWithLast(metadata, currentRunPageUrl, row) {
         this.codeViewer.setLoading('Finding last run...');
-        
-        const lastRun = this.findLastRun(metadata.runId, metadata.problem, metadata.team);
+        const currentTime = this.getRowOriginalTime(row);
+
+        const lastRun = this.findLastRun(metadata.runId, currentTime, metadata.problem, metadata.team);
 
         if (!lastRun) {
             this.codeViewer.setError('No previous run found for comparison.');
@@ -789,15 +790,19 @@ class RunsTableContentController {
         }
     }
 
-    findLastRun(currentRunIdStr, problem, team) {
-        // ... (findLastRun implementation unchanged, but needed for context if this wasn't replace_file_content. 
-        // Since it is, I can skip including unchanged methods in replacement if I target correctly, 
-        // but here I need to replace handleDiffWithLast which calls renderDiff)
-        // CHECK: I can just replace handleDiffWithLast and renderDiff separately or together if contiguous.
-        // They are separated by findLastRun. I will replace handleDiffWithLast first.
-        
+    getRowOriginalTime(row) {
+        const timeColIndex = this.getColumnIndex('Time');
+        if (timeColIndex === -1) return NaN;
+        const cell = row.cells[timeColIndex];
+        if (!cell) return NaN;
+        const raw = cell.getAttribute('data-original-time') || cell.textContent.trim();
+        return parseInt(raw, 10);
+    }
+
+    findLastRun(currentRunIdStr, currentTime, problem, team) {
         const currentRunId = parseInt(currentRunIdStr, 10);
-        let maxRunId = -1;
+        let bestTime = -1;
+        let bestRunId = -1;
         let foundRow = null;
 
         const rows = Array.from(this.table.rows);
@@ -807,21 +812,27 @@ class RunsTableContentController {
             const meta = this.extractRowMetadata(row, '?');
             const { runId: rIdStr } = this.extractRunInfo(row);
             const rId = parseInt(rIdStr, 10);
+            const rTime = this.getRowOriginalTime(row);
 
-            if (isNaN(rId)) continue;
-            if (rId >= currentRunId) continue;
+            if (isNaN(rId) || isNaN(rTime)) continue;
+
+            // Skip runs that are not strictly before the current one (by time, then ID as tiebreaker)
+            if (rTime > currentTime) continue;
+            if (rTime === currentTime && rId >= currentRunId) continue;
 
             if (meta.problem !== problem) continue;
             if (meta.team !== team) continue;
-            
+
             if (meta.answer.toUpperCase().includes('YES') || meta.answer.toUpperCase().includes('ACCEPTED')) continue;
 
-            if (rId > maxRunId) {
-                maxRunId = rId;
+            // Pick the most recent previous run (highest time, then highest ID as tiebreaker)
+            if (rTime > bestTime || (rTime === bestTime && rId > bestRunId)) {
+                bestTime = rTime;
+                bestRunId = rId;
                 foundRow = row;
             }
         }
-        return foundRow ? { row: foundRow, runId: maxRunId } : null;
+        return foundRow ? { row: foundRow, runId: bestRunId } : null;
     }
 
     // renderDiff, createModalIfNotExists, showModal, closeModal, view methods removed as they are now in CodeViewer.js
@@ -857,12 +868,12 @@ class RunsTableContentController {
     setupRunHighlighting() {
         this.injectHighlightStyles();
 
-        // Load stored state
-        const storedJudged = localStorage.getItem(this.storageKeyMaxJudged);
-        const storedNonJudged = localStorage.getItem(this.storageKeyMaxNonJudged);
+        // Load stored state (time-based)
+        const storedJudgedTime = localStorage.getItem(this.storageKeyMaxJudgedTime);
+        const storedNonJudgedTime = localStorage.getItem(this.storageKeyMaxNonJudgedTime);
 
-        this.storedMaxJudged = storedJudged ? parseInt(storedJudged, 10) : 0;
-        this.storedMaxNonJudged = storedNonJudged ? parseInt(storedNonJudged, 10) : 0;
+        this.storedMaxJudgedTime = storedJudgedTime ? parseInt(storedJudgedTime, 10) : 0;
+        this.storedMaxNonJudgedTime = storedNonJudgedTime ? parseInt(storedNonJudgedTime, 10) : 0;
 
         // Process rows to find max and highlight
         this.highlightNewRuns();
@@ -872,23 +883,20 @@ class RunsTableContentController {
             // Only update if we have found newer runs
             let updated = false;
             
-            if (this.currentMaxJudged > this.storedMaxJudged) {
-                localStorage.setItem(this.storageKeyMaxJudged, this.currentMaxJudged);
-                // Update stored value to reflect that we've "seen" it now?
-                // The prompt says: "notice highlighted rows should be kept highlighted, the state refresh should only affect the highlighted rows on the next page refresh after the change."
-                // So we update LocalStorage, but we DO NOT update `this.storedMaxJudged` because that would stop highlighting if we re-ran highlightNewRuns (which we don't, but still).
+            if (this.currentMaxJudgedTime > this.storedMaxJudgedTime) {
+                localStorage.setItem(this.storageKeyMaxJudgedTime, this.currentMaxJudgedTime);
                 updated = true;
             }
 
-            if (this.currentMaxNonJudged > this.storedMaxNonJudged) {
-                localStorage.setItem(this.storageKeyMaxNonJudged, this.currentMaxNonJudged);
+            if (this.currentMaxNonJudgedTime > this.storedMaxNonJudgedTime) {
+                localStorage.setItem(this.storageKeyMaxNonJudgedTime, this.currentMaxNonJudgedTime);
                 updated = true;
             }
 
             if (updated) {
-                console.log("Updated max run IDs in storage:", {
-                    judged: this.currentMaxJudged, 
-                    nonJudged: this.currentMaxNonJudged
+                console.log("Updated max run times in storage:", {
+                    judgedTime: this.currentMaxJudgedTime,
+                    nonJudgedTime: this.currentMaxNonJudgedTime
                 });
             }
         };
@@ -900,42 +908,40 @@ class RunsTableContentController {
     }
 
     highlightNewRuns() {
-        const runColIndex = this.getColumnIndex('Run #');
         const userColIndex = this.getUserColumnIndex();
 
-        if (runColIndex === -1 || userColIndex === -1) return;
+        if (userColIndex === -1) return;
 
         const rows = Array.from(this.table.rows);
-        
+
         // Initialize current max with stored values, so we at least keep the baseline
-        this.currentMaxJudged = this.storedMaxJudged;
-        this.currentMaxNonJudged = this.storedMaxNonJudged;
+        this.currentMaxJudgedTime = this.storedMaxJudgedTime;
+        this.currentMaxNonJudgedTime = this.storedMaxNonJudgedTime;
 
         // Skip header
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            const runCell = row.cells[runColIndex];
             const userCell = row.cells[userColIndex];
 
-            if (!runCell || !userCell) continue;
+            if (!userCell) continue;
 
-            const runId = parseInt(runCell.innerText.trim(), 10);
-            if (isNaN(runId)) continue;
+            const runTime = this.getRowOriginalTime(row);
+            if (isNaN(runTime)) continue;
 
             const userText = userCell.innerText.trim().toLowerCase();
             const isJudge = userText.includes('judge');
 
             if (isJudge) {
-                this.currentMaxJudged = Math.max(this.currentMaxJudged, runId);
+                this.currentMaxJudgedTime = Math.max(this.currentMaxJudgedTime, runTime);
                 // Highlight if newer than stored
-                if (runId > this.storedMaxJudged) {
+                if (runTime > this.storedMaxJudgedTime) {
                     row.classList.add('boca-new-run');
                     row.title = "New Run Since Last Visit";
                 }
             } else {
-                this.currentMaxNonJudged = Math.max(this.currentMaxNonJudged, runId);
+                this.currentMaxNonJudgedTime = Math.max(this.currentMaxNonJudgedTime, runTime);
                 // Highlight if newer than stored
-                if (runId > this.storedMaxNonJudged) {
+                if (runTime > this.storedMaxNonJudgedTime) {
                     row.classList.add('boca-new-run');
                     row.title = "New Run Since Last Visit";
                 }
