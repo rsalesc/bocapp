@@ -415,6 +415,84 @@ class RunsTableContentController {
         }
     }
 
+    ensureAliasColumn() {
+        if (this.getColumnIndex('Alias') !== -1) return;
+
+        const problemColIndex = this.getColumnIndex('Problem');
+        if (problemColIndex === -1) return;
+
+        const headerRow = this.table.rows[0];
+        const insertBeforeIndex = problemColIndex + 1;
+
+        if (headerRow.cells[0].tagName === 'TD') {
+            const td = document.createElement('td');
+            td.innerText = 'Alias';
+            td.style.textAlign = 'center';
+            td.style.fontWeight = 'bold';
+            headerRow.insertBefore(td, headerRow.cells[insertBeforeIndex] || null);
+        } else {
+            const th = document.createElement('th');
+            th.innerText = 'Alias';
+            th.style.textAlign = 'center';
+            headerRow.insertBefore(th, headerRow.cells[insertBeforeIndex] || null);
+        }
+
+        const rows = Array.from(this.table.rows);
+        for (let i = 1; i < rows.length; i++) {
+            const td = document.createElement('td');
+            td.style.textAlign = 'center';
+            td.innerText = '-';
+            rows[i].insertBefore(td, rows[i].cells[insertBeforeIndex] || null);
+        }
+    }
+
+    updateAliasColumn() {
+        const aliasColIndex = this.getColumnIndex('Alias');
+        const problemColIndex = this.getColumnIndex('Problem');
+        if (aliasColIndex === -1 || problemColIndex === -1) return;
+
+        const problemMap = {};
+        this.notifications.forEach(n => {
+            if (n.alias) {
+                problemMap[n.problem] = n;
+            }
+        });
+
+        const rows = Array.from(this.table.rows);
+        for (let i = 1; i < rows.length; i++) {
+            const problemCell = rows[i].cells[problemColIndex];
+            const aliasCell = rows[i].cells[aliasColIndex];
+            if (!problemCell || !aliasCell) continue;
+
+            const cellText = problemCell.textContent.trim();
+            let match = null;
+
+            if (problemMap[cellText]) {
+                match = problemMap[cellText];
+            } else {
+                for (const key in problemMap) {
+                    if (cellText === key ||
+                        cellText.startsWith(key + ' ') ||
+                        cellText.startsWith(key + '-') ||
+                        (problemMap[key].fullname && cellText.includes(problemMap[key].fullname))) {
+                        match = problemMap[key];
+                        break;
+                    }
+                }
+            }
+
+            if (match) {
+                aliasCell.innerText = match.alias;
+                aliasCell.style.backgroundColor = match.color;
+                aliasCell.style.color = match.textColor;
+            } else {
+                aliasCell.innerText = '-';
+                aliasCell.style.backgroundColor = '';
+                aliasCell.style.color = '';
+            }
+        }
+    }
+
     ensurePlusPlusColumn() {
         if (this.getColumnIndex('++') !== -1) return true;
 
@@ -1426,6 +1504,7 @@ class RunsTableContentController {
     }
 
     applyProblemHighlights() {
+        this.updateAliasColumn();
         const problemColIndex = this.getColumnIndex('Problem');
         if (problemColIndex === -1) return;
 

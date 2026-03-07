@@ -28,6 +28,7 @@ const PAGE_CONFIGS = [
 
                 // Initialize Content Controller
                 contentController = new RunsTableContentController(table);
+                contentController.ensureAliasColumn();
                 contentController.ensurePlusPlusColumn();
 
                 // Initialize Reorderer
