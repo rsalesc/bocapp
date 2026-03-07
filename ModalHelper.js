@@ -109,7 +109,16 @@ class ModalHelper {
             if (document.body.contains(overlay)) {
                 document.body.removeChild(overlay);
             }
+            document.removeEventListener('keydown', onKeyDown);
         };
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                if (onCancel) onCancel();
+                close();
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
 
         confirmBtn.onclick = (e) => {
             e.stopPropagation();

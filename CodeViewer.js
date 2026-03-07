@@ -180,6 +180,11 @@ class CodeViewer {
         if (modal) modal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
 
+        this._onKeyDown = (e) => {
+            if (e.key === 'Escape') this.close();
+        };
+        document.addEventListener('keydown', this._onKeyDown);
+
         if (options.title) {
             this.setTitle(options.title);
         }
@@ -189,6 +194,10 @@ class CodeViewer {
         const modal = document.getElementById('boca-code-modal');
         if (modal) modal.style.display = 'none';
         document.body.style.overflow = '';
+        if (this._onKeyDown) {
+            document.removeEventListener('keydown', this._onKeyDown);
+            this._onKeyDown = null;
+        }
     }
 
     setTitle(titleContent) {
@@ -303,6 +312,7 @@ class CodeViewer {
             const diffContainer = document.createElement('div');
             diffContainer.style.fontFamily = 'Consolas, monospace';
             diffContainer.style.whiteSpace = 'pre-wrap';
+            diffContainer.style.color = '#abb2bf';
 
             const header = document.createElement('div');
             Object.assign(header.style, {
