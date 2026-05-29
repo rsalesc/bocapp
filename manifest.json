@@ -2,50 +2,25 @@
   "manifest_version": 3,
   "name": "boca-plusplus",
   "version": "1.0",
-  "description": "A Chrome extension that modifies page content and persists state in the URL.",
+  "description": "Enhances the BOCA programming-contest admin/judge interface: richer runs table (aliases, reordering, inline code viewer with diffs) and score views.",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "clipboardWrite"
   ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
+    "default_title": "Enable Boca++ on this server",
     "default_icon": {
       "16": "icons/icon_gray_16.png",
       "48": "icons/icon_gray_48.png",
       "128": "icons/icon_gray_128.png"
     }
-  },
-  "options_page": "options.html",
-  "content_scripts": [
-    {
-      "matches": [
-        "*://*/boca/*",
-        "*://*/*"
-      ],
-      "css": [
-        "libs/tom-select.css",
-        "libs/highlight.min.css",
-        "libs/toastify.css"
-      ],
-      "js": [
-        "libs/tom-select.js",
-        "libs/highlight.min.js",
-        "libs/toastify.js",
-        "libs/diff_match_patch.js",
-        "utils.js",
-        "ModalHelper.js",
-        "RunsTableReorderer.js",
-        "CodeViewer.js",
-        "RunsTableContentController.js",
-        "ScoreTableContentController.js",
-        "RunEditContentController.js",
-        "content.js"
-      ],
-      "run_at": "document_end"
-    }
-  ]
+  }
 }
