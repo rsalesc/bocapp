@@ -68,15 +68,10 @@ async function disableDomain(hostname) {
     await chrome.storage.sync.remove('targetDomain');
 }
 
-async function enableDomain(hostname) {
+// Registers the content script for an already-granted origin and remembers it.
+// Assumes host permission for `hostname` has already been granted by the caller.
+async function activateDomain(hostname) {
     const originPattern = originPatternFor(hostname);
-
-    // The click is the user gesture that authorizes this request.
-    const granted = await chrome.permissions.request({ origins: [originPattern] });
-    if (!granted) {
-        console.log(`Boca++: host permission for ${hostname} was denied.`);
-        return false;
-    }
 
     // Re-register cleanly (handles switching from a previously enabled server).
     await unregisterScript();
@@ -86,7 +81,6 @@ async function enableDomain(hostname) {
     }]);
 
     await chrome.storage.sync.set({ targetDomain: hostname });
-    return true;
 }
 
 async function setIcon(tabId, active) {
@@ -113,31 +107,42 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
 
     const hostname = url.hostname;
+    const originPattern = originPatternFor(hostname);
+
+    // CRITICAL: permissions.request() must be the FIRST async call so the click's
+    // user activation is still valid. Awaiting storage/permissions.contains first
+    // consumes the gesture and makes request() throw "must be called during a user
+    // gesture". For an origin we already hold, request() resolves true with no prompt,
+    // so we can safely call it before deciding enable vs. disable.
+    let granted;
+    try {
+        granted = await chrome.permissions.request({ origins: [originPattern] });
+    } catch (e) {
+        console.error('Boca++: permission request failed for', hostname, e);
+        return;
+    }
+    if (!granted) {
+        console.log(`Boca++: host permission for ${hostname} was denied.`);
+        return;
+    }
 
     try {
         const { targetDomain } = await chrome.storage.sync.get('targetDomain');
-        const alreadyEnabledHere =
-            targetDomain === hostname &&
-            (await chrome.permissions.contains({ origins: [originPatternFor(hostname)] }));
 
-        if (alreadyEnabledHere) {
-            // Toggle OFF.
+        if (targetDomain === hostname) {
+            // Already enabled here → toggle OFF (also drops the permission we just
+            // re-confirmed above).
             await disableDomain(hostname);
             await setIcon(tab.id, false);
-            chrome.tabs.reload(tab.id);
-            return;
-        }
-
-        // Switching servers? Clean up the previously enabled one's permission first.
-        if (targetDomain && targetDomain !== hostname) {
-            await disableDomain(targetDomain);
-        }
-
-        const enabled = await enableDomain(hostname);
-        if (enabled) {
+        } else {
+            // Switching servers? Clean up the previously enabled one first.
+            if (targetDomain) {
+                await disableDomain(targetDomain);
+            }
+            await activateDomain(hostname);
             await setIcon(tab.id, true);
-            chrome.tabs.reload(tab.id);
         }
+        chrome.tabs.reload(tab.id);
     } catch (e) {
         console.error('Boca++: error toggling extension for', hostname, e);
     }
