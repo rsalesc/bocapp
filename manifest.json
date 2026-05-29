@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "boca-plusplus",
   "version": "1.0",
-  "description": "Enhances the BOCA programming-contest admin/judge interface: richer runs table (aliases, reordering, inline code viewer with diffs) and score views.",
+  "description": "Enhances the BOCA contest admin/judge UI: richer runs table with aliases, reordering, and an inline code viewer with diffs.",
   "permissions": [
     "activeTab",
     "scripting",
