@@ -10,8 +10,9 @@ with syntax highlighting and diffs between submissions.
 | ![Runs table](docs/screenshots/01-runs-table.png) | ![Code viewer](docs/screenshots/02-code-viewer.png) |
 
 > **Not yet on the Chrome Web Store.** Until it is published, install it manually
-> as an *unpacked* extension using the steps below. It only ever runs on a BOCA
-> server you explicitly turn it on for — see [How it works](#how-it-works).
+> using the steps below — the easiest way is the [release ZIP](#option-1--from-the-release-zip-recommended).
+> It only ever runs on a BOCA server you explicitly turn it on for — see
+> [Usage](#usage).
 
 ---
 
@@ -20,48 +21,39 @@ with syntax highlighting and diffs between submissions.
 - Google Chrome, or any Chromium-based browser (Edge, Brave, Vivaldi, …).
 - Access to a BOCA server (e.g. `http://your-boca-host/boca/`).
 
-## Install manually (unpacked)
+## Install
 
-### 1. Get the code onto your computer
+Chrome can't install a `.zip` (or `.crx`) just by double-clicking it — outside the
+Web Store, the only supported way is **Load unpacked** on a folder. So both methods
+below end with "Load unpacked"; the difference is just where the folder comes from.
 
-**Option A — download a ZIP (no git needed):**
+### Option 1 — From the release ZIP (recommended)
 
-1. On the GitHub page, click the green **`< > Code`** button → **Download ZIP**.
-2. Unzip it. You'll get a folder like `bocapp-main`.
+This ZIP contains only the extension files, so it's the cleanest option.
 
-**Option B — clone with git:**
+1. Go to the [**Releases**](https://github.com/rsalesc/bocapp/releases) page and
+   download `boca-plusplus-<version>.zip` from the latest release's **Assets**.
+2. **Unzip it.** You'll get a folder containing `manifest.json`, `background.js`,
+   `libs/`, `icons/`, etc. Keep this folder somewhere permanent — if you delete or
+   move it, the extension stops working.
+3. Go to `chrome://extensions` and turn on **Developer mode** (toggle, top-right).
+4. Click **Load unpacked** and select the **unzipped folder** (the one that
+   *directly* contains `manifest.json`).
+5. **Boca++** appears in the list. There's **no permission prompt yet** — that's
+   expected; access is requested only when you enable it on a server.
+6. **Pin it:** click the puzzle-piece **Extensions** button in the toolbar, find
+   **Boca++**, and click the pin so the icon stays visible.
 
-```bash
-git clone https://github.com/rsalesc/bocapp.git
-```
+### Option 2 — From source
 
-Either way, remember the folder path — you'll point Chrome at it in step 3.
+Use this if you want the latest unreleased code or plan to modify it.
 
-> Load the **whole repository folder** (the one containing `manifest.json`), *not*
-> the `dist/…zip`. Chrome's "Load unpacked" expects an unzipped folder.
-
-### 2. Open the Extensions page
-
-1. Go to `chrome://extensions` (type it in the address bar and press Enter).
-2. Turn on **Developer mode** using the toggle in the **top-right** corner.
-
-   Three buttons appear on the top-left: **Load unpacked**, **Pack extension**,
-   **Update**.
-
-### 3. Load the extension
-
-1. Click **Load unpacked**.
-2. Select the folder from step 1 — the one that **directly contains
-   `manifest.json`** (e.g. `bocapp-main/`).
-3. **Boca++** now appears in your extensions list. There is **no permission
-   prompt yet** — that's expected; access is requested only when you enable it on
-   a server.
-
-### 4. Pin the toolbar icon (recommended)
-
-Click the puzzle-piece **Extensions** button in Chrome's toolbar, find **Boca++**,
-and click the pin so its icon stays visible. You'll click this icon to turn the
-extension on.
+1. Get the repository, either by **`< > Code` → Download ZIP** (then unzip) or:
+   ```bash
+   git clone https://github.com/rsalesc/bocapp.git
+   ```
+2. Follow steps 3–6 from Option 1, selecting the **repository folder** (the one
+   containing `manifest.json`) — **not** the `dist/…zip` inside it.
 
 ## Usage
 
@@ -90,9 +82,11 @@ Boca++ only enhances these BOCA pages (and only on a server you've enabled):
 
 ## Updating
 
-When you pull or download a newer version:
+When a newer version is available:
 
-1. Replace the folder contents (`git pull`, or re-download and unzip over it).
+1. Refresh the folder Chrome points at — download the new
+   [release ZIP](https://github.com/rsalesc/bocapp/releases) and unzip it over the
+   old folder, or `git pull` if you installed from source.
 2. Go to `chrome://extensions` and click the **reload** ↻ icon on the Boca++ card.
 3. Refresh your BOCA tab.
 
