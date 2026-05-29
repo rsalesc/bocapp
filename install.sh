@@ -13,7 +13,8 @@
 set -euo pipefail
 
 REPO="rsalesc/bocapp"
-INSTALL_DIR="${BOCAPP_DIR:-$HOME/boca-plusplus}"
+# Unpack into ./boca-plusplus in the current working directory by default.
+INSTALL_DIR="${BOCAPP_DIR:-$PWD/boca-plusplus}"
 
 say()  { printf '%s\n' "$*"; }
 die()  { printf 'Error: %s\n' "$*" >&2; exit 1; }

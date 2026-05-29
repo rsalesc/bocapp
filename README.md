@@ -32,15 +32,17 @@ below end with "Load unpacked"; the difference is just where the folder comes fr
 This ZIP contains only the extension files, so it's the cleanest option.
 
 **Quickest:** run the installer script (macOS, Linux, or Windows Git Bash / WSL).
-It downloads the latest release, unpacks it to `~/boca-plusplus`, and tells you the
-one Chrome step left:
+It downloads the latest release, unpacks it into a `boca-plusplus/` folder **in the
+current directory**, and tells you the one Chrome step left:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rsalesc/bocapp/main/install.sh | bash
 ```
 
 Then do steps 3–6 below (Developer mode → Load unpacked → pin), pointing Chrome at
-the `~/boca-plusplus` folder it created. Re-run the command anytime to update.
+the `boca-plusplus/` folder it created. Keep that folder where it is — Chrome reads
+the extension from it. Re-run the command anytime to update. _(Want a different
+location? Run `BOCAPP_DIR=/path/to/folder bash install.sh`.)_
 
 **Or do it by hand:**
 
