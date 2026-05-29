@@ -31,6 +31,19 @@ below end with "Load unpacked"; the difference is just where the folder comes fr
 
 This ZIP contains only the extension files, so it's the cleanest option.
 
+**Quickest:** run the installer script (macOS, Linux, or Windows Git Bash / WSL).
+It downloads the latest release, unpacks it to `~/boca-plusplus`, and tells you the
+one Chrome step left:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rsalesc/bocapp/main/install.sh | bash
+```
+
+Then do steps 3–6 below (Developer mode → Load unpacked → pin), pointing Chrome at
+the `~/boca-plusplus` folder it created. Re-run the command anytime to update.
+
+**Or do it by hand:**
+
 1. Go to the [**Releases**](https://github.com/rsalesc/bocapp/releases) page and
    download `boca-plusplus-<version>.zip` from the latest release's **Assets**.
 2. **Unzip it.** You'll get a folder containing `manifest.json`, `background.js`,
